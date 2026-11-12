@@ -2,7 +2,7 @@
    Bump CACHE when you ship new files so installed phones drop the old set. */
 'use strict';
 
-const CACHE = 'volt-alley-v1';
+const CACHE = 'volt-alley-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -17,7 +17,7 @@ const ASSETS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+    caches.open(CACHE).then((cache) => cache.addAll(ASSETS.map((url) => new Request(url, { cache: 'reload' })))).then(() => self.skipWaiting())
   );
 });
 

@@ -1365,7 +1365,7 @@ function updateCountdown(dt) {
   }
 
   function onHelpPrimary() {
-    audio.ui();
+    uiBlip();
     if (helpBack === 'pause') {
       closeHelp();
       return;
@@ -1377,7 +1377,7 @@ function updateCountdown(dt) {
 
   function onRide() {
     unlockAudio();
-    audio.ui();
+    uiBlip();
     if (!seenHelp) openHelp('start');
     else startCountdown();
   }
@@ -1412,6 +1412,76 @@ function updateCountdown(dt) {
 
   function unlockAudio() {
     try { audio.unlock(); } catch (err) { /* ignore */ }
+  }
+
+  function uiBlip() {
+    try { audio.ui(); } catch (err) { /* ignore */ }
+  }
+
+  // Menu buttons: fire on touchend / pointerup (reliable on iOS Safari and the
+  // home-screen app, where body has touch-action:none), with click as the fallback
+  // for mouse and keyboard. A short global guard stops double-firing.
+  const PRESS_GUARD_MS = 450;
+  let lastPressAt = -1e9;
+  let lastPressEl = null;
+  function bindPress(el, fn) {
+    if (!el) return;
+    const fire = (src) => {
+      const now = performance.now();
+      // A click right after a handled touch is the iOS ghost click: drop it.
+      if (src === 'click' && now - lastPressAt < PRESS_GUARD_MS) return;
+      // touchend and pointerup both arrive for one tap: run it once.
+      if (src !== 'click' && lastPressEl === el && now - lastPressAt < 300) return;
+      if (el.offsetParent === null) return; // hidden
+      if (src !== 'click') { lastPressAt = now; lastPressEl = el; }
+      try { fn(); } catch (err) { reportFault(err); }
+    };
+    const inside = (x, y) => {
+      const r = el.getBoundingClientRect();
+      const s = 18;
+      return x >= r.left - s && x <= r.right + s && y >= r.top - s && y <= r.bottom + s;
+    };
+    let touchArmed = false;
+    let pointerArmed = null;
+    el.addEventListener('touchstart', () => {
+      touchArmed = true;
+      el.classList.add('pressed');
+    }, { passive: true });
+    el.addEventListener('touchend', (e) => {
+      el.classList.remove('pressed');
+      if (!touchArmed) return;
+      touchArmed = false;
+      const t = e.changedTouches && e.changedTouches[0];
+      if (t && !inside(t.clientX, t.clientY)) return;
+      if (e.cancelable) e.preventDefault(); // stops the delayed synthetic click
+      fire('touch');
+    }, { passive: false });
+    el.addEventListener('touchcancel', () => { touchArmed = false; el.classList.remove('pressed'); });
+    el.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return;
+      pointerArmed = e.pointerId;
+      el.classList.add('pressed');
+    });
+    el.addEventListener('pointerup', (e) => {
+      el.classList.remove('pressed');
+      if (e.pointerType === 'mouse' || pointerArmed !== e.pointerId) return;
+      pointerArmed = null;
+      if (!inside(e.clientX, e.clientY)) return;
+      fire('pointer');
+    });
+    el.addEventListener('pointercancel', () => { pointerArmed = null; el.classList.remove('pressed'); });
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      fire('click');
+    });
+  }
+
+  function reportFault(err) {
+    try {
+      const el = $('boot-error');
+      el.hidden = false;
+      el.textContent = 'VOLT ALLEY hit a fault: ' + ((err && err.message) || err || 'unknown');
+    } catch (e) { /* ignore */ }
   }
 
   function bindHold(el, flag) {
@@ -1455,26 +1525,34 @@ function updateCountdown(dt) {
     bindHold($('btn-lean-back'), 'leanBack');
     bindHold($('btn-lean-fwd'), 'leanFwd');
 
-    $('btn-ride').addEventListener('click', onRide);
-    $('btn-howto').addEventListener('click', () => { unlockAudio(); audio.ui(); openHelp('title'); });
-    $('btn-help-close').addEventListener('click', () => { audio.ui(); closeHelp(); });
-    $('btn-help-ride').addEventListener('click', onHelpPrimary);
-    $('btn-pause').addEventListener('click', () => { audio.ui(); pauseGame(); });
-    $('btn-resume').addEventListener('click', () => { audio.ui(); resumeGame(); });
-    $('btn-pause-retry').addEventListener('click', () => { audio.ui(); startCountdown(); });
-    $('btn-pause-howto').addEventListener('click', () => { audio.ui(); openHelp('pause'); });
-    $('btn-pause-title').addEventListener('click', () => { audio.ui(); toTitle(); });
-    $('btn-retry').addEventListener('click', () => { audio.ui(); startCountdown(); });
-    $('btn-result-title').addEventListener('click', () => { audio.ui(); toTitle(); });
-    $('btn-mute').addEventListener('click', () => {
+    bindPress($('btn-ride'), onRide);
+    bindPress($('btn-howto'), () => { unlockAudio(); uiBlip(); openHelp('title'); });
+    bindPress($('btn-help-close'), () => { uiBlip(); closeHelp(); });
+    bindPress($('btn-help-ride'), onHelpPrimary);
+    bindPress($('btn-pause'), () => { uiBlip(); pauseGame(); });
+    bindPress($('btn-resume'), () => { uiBlip(); resumeGame(); });
+    bindPress($('btn-pause-retry'), () => { uiBlip(); startCountdown(); });
+    bindPress($('btn-pause-howto'), () => { uiBlip(); openHelp('pause'); });
+    bindPress($('btn-pause-title'), () => { uiBlip(); toTitle(); });
+    bindPress($('btn-retry'), () => { uiBlip(); startCountdown(); });
+    bindPress($('btn-result-title'), () => { uiBlip(); toTitle(); });
+    bindPress($('btn-mute'), () => {
       unlockAudio();
       audio.muted = !audio.muted;
       try { localStorage.setItem(MUTE_KEY, audio.muted ? '1' : '0'); } catch (err) { /* ignore */ }
       syncMute();
-      audio.ui();
+      uiBlip();
     });
 
-    document.addEventListener('pointerdown', unlockAudio);
+    // Swallow the synthetic "ghost" click iOS sends right after a touch we already handled,
+    // so it can't land on a button that just appeared under the finger.
+    document.addEventListener('click', (e) => {
+      if (performance.now() - lastPressAt < PRESS_GUARD_MS && e.detail !== 0) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
+    document.addEventListener('pointerdown', unlockAudio, { passive: true });
     document.addEventListener('keydown', (e) => {
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
         e.preventDefault();
@@ -1496,7 +1574,12 @@ function updateCountdown(dt) {
     });
     document.addEventListener('keyup', (e) => keys.delete(e.code));
     window.addEventListener('blur', () => keys.clear());
-    document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+    document.addEventListener('touchmove', (e) => {
+      // Let the help/pause panels scroll on short screens; block page bounce everywhere else.
+      const panel = e.target && e.target.closest ? e.target.closest('.panel') : null;
+      if (panel && panel.scrollHeight > panel.clientHeight + 1) return;
+      e.preventDefault();
+    }, { passive: false });
     document.addEventListener('gesturestart', (e) => e.preventDefault());
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
@@ -1534,7 +1617,17 @@ function updateCountdown(dt) {
       badge.textContent = 'NO SERVICE WORKER';
       return;
     }
-    navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' }).then(() => {
+    // When an updated worker takes over an already-running copy, reload once so the new files load.
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloaded) return;
+      if (phase === 'play' || phase === 'countdown') return;
+      reloaded = true;
+      window.location.reload();
+    });
+    navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' }).then((reg) => {
+      try { reg.update(); } catch (err) { /* ignore */ }
       navigator.serviceWorker.ready.then(() => {
         badge.textContent = 'OFFLINE READY';
         badge.classList.add('on');
@@ -1602,6 +1695,7 @@ function updateCountdown(dt) {
   }
 
   function boot() {
+    window.addEventListener('error', (e) => reportFault(e.message || 'unknown'));
     track = buildTrack();
     best = loadNum(BEST_KEY);
     seenHelp = false;
@@ -1622,11 +1716,6 @@ function updateCountdown(dt) {
     window.addEventListener('resize', resize);
     if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
     window.addEventListener('orientationchange', () => setTimeout(resize, 60));
-    window.addEventListener('error', (e) => {
-      const el = $('boot-error');
-      el.hidden = false;
-      el.textContent = 'VOLT ALLEY hit a fault: ' + (e.message || 'unknown');
-    });
     loop.last = performance.now();
     requestAnimationFrame(loop);
 

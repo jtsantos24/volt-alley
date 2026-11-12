@@ -24,7 +24,7 @@
     if (ctx) return true;
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return false;
-    ctx = new AC();
+    try { ctx = new AC(); } catch (err) { ctx = null; return false; }
     master = ctx.createGain();
     master.gain.value = 0.8;
     master.connect(ctx.destination);
@@ -118,7 +118,9 @@
 
   function unlock() {
     if (!ensure()) return;
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state === 'suspended') {
+      try { const p = ctx.resume(); if (p && p.catch) p.catch(() => {}); } catch (err) { /* ignore */ }
+    }
     if (!started) {
       started = true;
       nextAt = ctx.currentTime + 0.08;
@@ -215,10 +217,14 @@
       blip(760, 0.045, 'square', 0.03);
     },
     suspend: function () {
-      if (ctx && ctx.state === 'running') ctx.suspend();
+      if (ctx && ctx.state === 'running') {
+        try { const p = ctx.suspend(); if (p && p.catch) p.catch(() => {}); } catch (err) { /* ignore */ }
+      }
     },
     resumeCtx: function () {
-      if (ctx && ctx.state === 'suspended') ctx.resume();
+      if (ctx && ctx.state === 'suspended') {
+        try { const p = ctx.resume(); if (p && p.catch) p.catch(() => {}); } catch (err) { /* ignore */ }
+      }
     },
   };
 })();
