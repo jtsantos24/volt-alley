@@ -1978,7 +1978,11 @@ function updateCountdown(dt) {
         e.stopPropagation();
       }
     }, true);
+    // iOS only counts touchend / pointerup / click as a user activation for audio.
     document.addEventListener('pointerdown', unlockAudio, { passive: true });
+    document.addEventListener('pointerup', unlockAudio, { passive: true });
+    document.addEventListener('touchend', unlockAudio, { passive: true });
+    document.addEventListener('click', unlockAudio, true);
     document.addEventListener('keydown', (e) => {
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
         e.preventDefault();
@@ -2011,8 +2015,12 @@ function updateCountdown(dt) {
       if (document.hidden) {
         if (phase === 'play' || phase === 'countdown') pauseGame();
         audio.suspend();
+      } else {
+        audio.resumeCtx();
       }
     });
+    window.addEventListener('pagehide', () => audio.suspend());
+    window.addEventListener('pageshow', () => { if (!document.hidden) audio.resumeCtx(); });
   }
 
   function syncMute() {
@@ -2119,6 +2127,11 @@ function updateCountdown(dt) {
       }
       updateCallout();
     }
+
+    try {
+      const inten = phase === 'play' ? Math.min(1, bike.speed / 980 * 0.75 + bike.heat * 0.35) : phase === 'countdown' ? 0.2 : 0;
+      audio.scene(phase, inten);
+    } catch (err) { /* music is optional */ }
 
     render();
     syncHud();
