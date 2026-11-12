@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#07060f">
+  <meta name="color-scheme" content="dark">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="VOLT ALLEY">
+  <meta name="description" content="VOLT ALLEY is a gritty cyberpunk hover-bike lane racer. Four lanes, a heat limit, and landings that count.">
+  <title>VOLT ALLEY</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="stylesheet" href="css/game.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="view" width="844" height="390"></canvas>
+    <div id="scan"></div>
+    <div id="vignette"></div>
+
+    <div id="hud" class="hidden">
+      <div class="left">
+        <div class="label">TIME</div>
+        <div id="time-val">0:00.00</div>
+        <div id="best-val">BEST --:--.--</div>
+        <div id="pips" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="center">
+        <div id="attitude" aria-hidden="true">
+          <div id="horizon-line"></div>
+          <div id="nose-mark"></div>
+        </div>
+      </div>
+      <div class="right">
+        <div id="speed"><span id="speed-val">0</span><span class="unit">KM/H</span></div>
+        <div id="heat" role="meter" aria-label="Core heat" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div id="heat-fill"></div>
+        </div>
+        <div id="heat-label">HEAT</div>
+      </div>
+    </div>
+
+    <button id="btn-pause" class="chrome hidden" type="button">PAUSE</button>
+    <button id="btn-mute" class="chrome" type="button">SOUND ON</button>
+
+    <div id="touch" class="hidden">
+      <button id="btn-throttle" class="pad" type="button">THROTTLE</button>
+      <button id="btn-turbo" class="pad" type="button">TURBO</button>
+      <button id="btn-lean-back" class="pad lean" type="button">LEAN<br>BACK</button>
+      <button id="btn-lean-fwd" class="pad lean" type="button">LEAN<br>FWD</button>
+      <button id="btn-lane-up" class="pad" type="button">LANE<br>UP</button>
+      <button id="btn-lane-down" class="pad" type="button">LANE<br>DOWN</button>
+    </div>
+
+    <div id="countdown" class="hidden" aria-hidden="true"></div>
+    <div id="callout" aria-live="polite"></div>
+    <div id="toast" aria-live="polite"></div>
+
+    <section id="overlay-title" class="overlay">
+      <div class="title-block">
+        <p class="kicker">SECTOR 9 CIRCUIT</p>
+        <h1 class="logo">VOLT<br>ALLEY</h1>
+        <p class="tag">Four lanes. A hot core. Stick the landing.</p>
+        <p id="title-best" class="bestline">BEST --:--.--</p>
+        <div class="row">
+          <button id="btn-ride" class="primary" type="button">RIDE</button>
+          <button id="btn-howto" class="ghost" type="button">HOW TO RIDE</button>
+        </div>
+        <p id="offline-badge" class="badge">CACHING…</p>
+      </div>
+    </section>
+
+    <section id="overlay-help" class="overlay hidden">
+      <div class="panel">
+        <div class="help-head">
+          <h2>HOW TO RIDE</h2>
+          <button id="btn-help-close" class="ghost" type="button">CLOSE</button>
+        </div>
+        <div class="help-grid">
+          <p><b>THROTTLE</b> Hold the big pad to build speed. Let go and the bike coasts. It does not stop on a dime.</p>
+          <p><b>TURBO</b> A hotter shove. The core climbs. Fill the gauge and boost locks until it cools. Cyan pads reset heat.</p>
+          <p><b>LANES</b> Up moves you toward the skyline, down toward you. Tall fences block a lane. Debris scrapes your speed.</p>
+          <p><b>LEAN</b> In the air, BACK lifts the nose and FWD drops it. The ring is your angle. Lay it flat before you hit.</p>
+          <p><b>CRASH</b> A bad landing or a fence costs 3 seconds. You respawn past the impact, slower, and the clock keeps the penalty.</p>
+          <p><b>FINISH</b> Cross the Sector 9 gate. Your best time stays on this phone.</p>
+          <p class="keys">Keys: D, Right, or Space throttle. Shift turbo. W/S or Up/Down lanes. A or Left lean back. Q lean forward. P pause.</p>
+        </div>
+        <div class="row">
+          <button id="btn-help-ride" class="primary" type="button">RIDE</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="overlay-pause" class="overlay hidden">
+      <div class="panel narrow">
+        <p class="kicker">PAUSED</p>
+        <h2>HOLDING THE ALLEY</h2>
+        <p class="tag">The core is still hot. The clock is not.</p>
+        <div class="row">
+          <button id="btn-resume" class="primary" type="button">RESUME</button>
+          <button id="btn-pause-retry" class="ghost" type="button">RETRY</button>
+        </div>
+        <div class="row">
+          <button id="btn-pause-howto" class="ghost" type="button">HOW TO RIDE</button>
+          <button id="btn-pause-title" class="ghost" type="button">TITLE</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="overlay-results" class="overlay hidden">
+      <div class="panel narrow">
+        <p id="result-kicker" class="kicker">SECTOR CLEAR</p>
+        <p id="result-time" class="result-time">0:00.00</p>
+        <dl class="stats">
+          <div><dt>BEST</dt><dd id="result-best">--:--.--</dd></div>
+          <div><dt>FAULTS</dt><dd id="result-faults">0</dd></div>
+          <div><dt>CLEAN</dt><dd id="result-cleans">0</dd></div>
+          <div><dt>TOP</dt><dd><span id="result-top">0</span> KM/H</dd></div>
+        </dl>
+        <div class="row">
+          <button id="btn-retry" class="primary" type="button">RIDE AGAIN</button>
+          <button id="btn-result-title" class="ghost" type="button">TITLE</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="overlay-rotate">
+      <div class="title-block">
+        <p class="kicker">VOLT ALLEY</p>
+        <h2>ROTATE TO LANDSCAPE</h2>
+        <p class="tag">The alley runs the long way. Turn your phone sideways.</p>
+      </div>
+    </section>
+
+    <p id="boot-error" hidden></p>
+  </div>
+  <noscript><p style="color:#e7f7ff;font-family:monospace;padding:16px">VOLT ALLEY needs JavaScript.</p></noscript>
+  <script src="js/audio.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
