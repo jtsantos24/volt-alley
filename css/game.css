@@ -1,4 +1,4 @@
-/* VOLT ALLEY - cozy 16-bit cyberpunk skin.
+/* VOLT ALLEY - 16-bit neon dusk.
    Pixel font: Jersey 10 (SIL OFL 1.1, see fonts/OFL.txt), bundled for offline play. */
 @font-face {
   font-family: 'Jersey 10';
@@ -9,23 +9,23 @@
 }
 
 :root {
-  --bg: #1b1032;
-  --ink: #140c1c;
-  --cream: #f7e6c4;
-  --parch: #d9c7a8;
-  --dim: #b39cc2;
-  --cyan: #3de8e0;
-  --magenta: #ff3fa4;
-  --amber: #ffc54d;
+  --bg: #140820;
+  --ink: #0c0614;
+  --cream: #ffe4f4;
+  --parch: #e8b8d8;
+  --dim: #c49ad0;
+  --cyan: #5ef6ff;
+  --magenta: #ff4ad0;
+  --amber: #ffb347;
   --lamp: #ffe08a;
-  --wood0: #2e170d;
-  --wood1: #5a2f17;
-  --wood2: #8a4f24;
-  --wood3: #c4813e;
-  --wood4: #f0b76a;
-  --plum: #2b1c38;
-  --plum2: #3d2c4c;
-  --panel: #2b1c38;
+  --wood0: #0c0616;
+  --wood1: #241044;
+  --wood2: #4a1878;
+  --wood3: #ff4ad0;
+  --wood4: #5ef6ff;
+  --plum: #1c0c32;
+  --plum2: #321858;
+  --panel: #1c0c32;
   --sat: env(safe-area-inset-top, 0px);
   --sar: env(safe-area-inset-right, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
@@ -487,7 +487,7 @@ h2 {
   color: var(--dim);
 }
 
-.badge.on { color: var(--leaf, #79b04e); }
+.badge.on { color: var(--cyan); }
 
 .help-grid {
   display: grid;

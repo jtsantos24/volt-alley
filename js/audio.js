@@ -54,19 +54,6 @@
     return buf;
   }
 
-  function makeCrackle(ac) {
-    const rate = ac.sampleRate;
-    const len = Math.floor(rate * 3.7);
-    const buf = ac.createBuffer(1, len, rate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) {
-      let v = (Math.random() * 2 - 1) * 0.05;
-      if (Math.random() < 0.00035) v += (Math.random() > 0.5 ? 1 : -1) * (0.4 + Math.random() * 0.6);
-      d[i] = v;
-    }
-    return buf;
-  }
-
   // ---------------------------------------------------------------------------
   // Music engine. Works on a live AudioContext or an OfflineAudioContext.
   // ---------------------------------------------------------------------------
@@ -191,20 +178,6 @@
     arpAmp.connect(pulseBus);
     arp.frequency.value = mtof(50);
     arp.start();
-
-    // Vinyl / rain crackle bed.
-    const crackle = ac.createBufferSource();
-    crackle.buffer = makeCrackle(ac);
-    crackle.loop = true;
-    const crackleHP = ac.createBiquadFilter();
-    crackleHP.type = 'highpass';
-    crackleHP.frequency.value = 900;
-    const crackleG = ac.createGain();
-    crackleG.gain.value = 0.05;
-    crackle.connect(crackleHP);
-    crackleHP.connect(crackleG);
-    crackleG.connect(tone);
-    crackle.start();
 
     let mood = 'title';
     let ducked = false;
@@ -389,7 +362,6 @@
     function applyMood(t, tau) {
       pulseBus.gain.setTargetAtTime(mood === 'race' ? 1 : 0, t, tau);
       padBus.gain.setTargetAtTime(mood === 'race' ? 0.85 : 1, t, tau);
-      crackleG.gain.setTargetAtTime(mood === 'race' ? 0.02 : 0.05, t, tau);
       droneAG.gain.setTargetAtTime(mood === 'race' ? 0.12 : 0.16, t, tau);
       duck.gain.setTargetAtTime(ducked ? 0.3 : 1, t, ducked ? 0.25 : 0.6);
     }
@@ -428,14 +400,13 @@
   let engine = null;
   let engineFilter = null;
   let engineGain = null;
-  let rainGain = null;
+  let started = false;
   let sub = null;
   let subGain = null;
   let noiseBuf = null;
   let music = null;
   let musicTimer = null;
   let muted = false;
-  let started = false;
   let hiddenPause = false;
   let suspendTimer = null;
   let lastMood = '';
@@ -478,19 +449,6 @@
     noiseBuf = ctx.createBuffer(1, n, ctx.sampleRate);
     const data = noiseBuf.getChannelData(0);
     for (let i = 0; i < n; i++) data[i] = Math.random() * 2 - 1;
-
-    const rainSrc = ctx.createBufferSource();
-    rainSrc.buffer = noiseBuf;
-    rainSrc.loop = true;
-    const rainFilter = ctx.createBiquadFilter();
-    rainFilter.type = 'highpass';
-    rainFilter.frequency.value = 1000;
-    rainGain = ctx.createGain();
-    rainGain.gain.value = 0;
-    rainSrc.connect(rainFilter);
-    rainFilter.connect(rainGain);
-    rainGain.connect(sfxBus);
-    rainSrc.start();
 
     try {
       music = createMusic(ctx, master);
@@ -582,7 +540,7 @@
     applyMute();
   }
 
-  function tick(speed, turbo, driveOn, raining) {
+  function tick(speed, turbo, driveOn) {
     if (!ctx) return;
     const t = ctx.currentTime;
     const norm = Math.max(0, Math.min(1, speed / 980));
@@ -591,7 +549,6 @@
     engineGain.gain.setTargetAtTime(!driveOn || muted ? 0 : 0.03 + norm * 0.05, t, 0.05);
     sub.frequency.setTargetAtTime(40 + norm * 22, t, 0.08);
     subGain.gain.setTargetAtTime(!driveOn || muted ? 0 : 0.028 + norm * 0.02, t, 0.08);
-    rainGain.gain.setTargetAtTime(!raining || muted ? 0 : 0.016, t, 0.25);
   }
 
   // phase: title | help | countdown | play | pause | results
