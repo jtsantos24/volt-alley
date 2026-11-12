@@ -2,7 +2,7 @@
    Bump CACHE when you ship new files so installed phones drop the old set. */
 'use strict';
 
-const CACHE = 'volt-alley-v4';
+const CACHE = 'volt-alley-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -17,17 +17,32 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS.map((url) => new Request(url, { cache: 'reload' })))).then(() => self.skipWaiting())
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    self.__voltUpdating = keys.some((key) => key.indexOf('volt-alley-') === 0 && key !== CACHE);
+    const cache = await caches.open(CACHE);
+    await cache.addAll(ASSETS.map((url) => new Request(url, { cache: 'reload' })));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))
-    ).then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)));
+    await self.clients.claim();
+    if (!self.__voltUpdating) return;
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    await Promise.all(windows.map(async (client) => {
+      if (!client.navigate) return;
+      try {
+        const url = new URL(client.url);
+        if (url.searchParams.get('updated') === '1') return;
+        url.searchParams.set('updated', '1');
+        await client.navigate(url.toString());
+      } catch (err) { /* the page listener reloads too */ }
+    }));
+  })());
 });
 
 self.addEventListener('fetch', (event) => {

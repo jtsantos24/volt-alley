@@ -11,7 +11,7 @@
   const SIGNS = ['NOODLE', 'WETWARE', '24H', 'KILO', 'STATIC', 'ASH CO', 'BYTE', 'RAIN', 'VOLT', 'LOW', 'GRID', 'NITE', 'AMP', 'RADIO', 'SODA'];
 
   const TUNE = {
-    gravity: 1120,
+    gravity: 760,
     accel: 340,
     turboAccel: 560,
     coast: 150,
@@ -19,13 +19,13 @@
     maxSpeed: 720,
     turboSpeed: 980,
     heatSpeed: 400,
-    pop: 2.7,
-    vyMax: 390,
-    vyMin: 150,
-    crashAngle: 0.36,
-    hardAngle: 0.2,
-    cleanAngle: 0.11,
-    leanRate: 1.15,
+    pop: 3.3,
+    vyMax: 410,
+    vyMin: 170,
+    crashAngle: 0.82,
+    hardAngle: 0.48,
+    cleanAngle: 0.22,
+    leanRate: 9.0,
     laneRate: 5.2,
     penalty: 3,
     heatOn: 0.22,
@@ -236,6 +236,13 @@ function layoutMetrics() {
 }
   function laneBase(i, layout) { return layout.trackTop + i * layout.laneGap; }
 
+  function visualHeight(y, layout, lane) {
+    const ceiling = 36;
+    const maxY = Math.max(0, laneBase(lane, layout) - ceiling);
+    if (y <= maxY) return y;
+    return maxY + (y - maxY) * 0.4;
+  }
+
   function initRain() {
     rain.length = 0;
     const count = reduceMotion ? 36 : 110;
@@ -283,6 +290,13 @@ function layoutMetrics() {
     };
   }
 
+function wrapAngle(a) {
+  const turn = Math.PI * 2;
+  let x = (a + Math.PI) % turn;
+  if (x < 0) x += turn;
+  return x - Math.PI;
+}
+
 function nudgeLane(dir) {
   laneTarget = clamp(Math.round(laneTarget) + dir, 0, 3);
 }
@@ -304,6 +318,8 @@ function chaseLane(dt) {
     bike.y = Math.max(bike.y, bike.prevH);
     bike.airTime = 0;
     bike.pitch = Math.atan(clamp(slope, 0, 1.2));
+    bike.takeoffPitch = bike.pitch;
+    bike.flips = 0;
     audio.jump();
   }
 
@@ -344,7 +360,7 @@ function chaseLane(dt) {
 
   function land(g, lane) {
     const groundAngle = Math.atan(clamp(g.slope, -1.2, 1.2));
-    const diff = Math.abs(bike.pitch - groundAngle);
+    const diff = Math.abs(wrapAngle(bike.pitch - groundAngle));
     bike.air = false;
     bike.vy = 0;
     bike.y = g.h;
@@ -436,10 +452,11 @@ function chaseLane(dt) {
       return;
     }
     if (bike.air) {
-      if (bike.pitch > 0.11) {
+      const nose = wrapAngle(bike.pitch);
+      if (nose > TUNE.cleanAngle) {
         el.textContent = 'LEAN FWD';
         el.className = 'bad';
-      } else if (bike.pitch < -0.11) {
+      } else if (nose < -TUNE.cleanAngle) {
         el.textContent = 'LEAN BACK';
         el.className = 'bad';
       } else if (bike.airTime > 0.12) {
@@ -527,7 +544,11 @@ function chaseLane(dt) {
     if (bike.air) {
       if (inp.leanFwd && !inp.leanBack) bike.pitch -= TUNE.leanRate * dt;
       else if (inp.leanBack && !inp.leanFwd) bike.pitch += TUNE.leanRate * dt;
-      bike.pitch = clamp(bike.pitch, -1.05, 1.15);
+      const spun = Math.floor(Math.abs(bike.pitch - (bike.takeoffPitch || 0)) / (Math.PI * 2));
+      if (spun > (bike.flips || 0)) {
+        bike.flips = spun;
+        toast('FLIP', 'good');
+      }
       bike.vy -= TUNE.gravity * dt;
       bike.y += bike.vy * dt;
       bike.airTime += dt;
@@ -1317,41 +1338,57 @@ function updateCountdown(dt) {
     if (Math.sin(time * 8) > 0) rect(sx, base - 1, Math.max(2, w), 1, PAL.amber);
   }
 
-  function drawFence(h, sx, base) {
-    const w = Math.max(3, q(h.w));
+  function drawFence(h, sx, base, layout) {
+    const w = Math.max(4, q(h.w));
     const tall = h.clear > 200;
-    if (tall) {
-      const ht = q(86);
-      ctx.globalAlpha = 0.14;
-      rect(sx, base - ht, w, ht, PAL.mag);
-      ctx.globalAlpha = 1;
-      const flick = 0.65 + 0.35 * Math.sin(time * 20 + h.x);
-      for (let y = base - ht + 3; y < base - 1; y += 4) {
-        ctx.globalAlpha = flick;
-        rect(sx, y, w, 1, PAL.mag);
-        ctx.globalAlpha = flick * 0.35;
-        rect(sx, y - 1, w, 1, PAL.mag);
-      }
-      ctx.globalAlpha = 1;
-      rect(sx, base - 2, w, 2, PAL.cyan);
-      for (const px of [sx - 2, sx + w - 1]) {
-        rect(px, base - ht - 2, 3, ht + 2, PAL.ink);
-        rect(px + 1, base - ht - 1, 1, ht + 1, PAL.stone3);
-        rect(px, base - ht - 3, 3, 1, Math.sin(time * 6) > 0 ? PAL.mag : PAL.lamp);
-      }
-      return;
+    const ink = h.lane % 2 ? PAL.mag : PAL.cyan;
+    const ribbon = Math.max(4, q(11) + 1);
+    const slot = Math.max(ribbon + 3, q(layout.laneGap) - 2);
+    const wallH = tall ? Math.max(ribbon + 2, slot - 1) : Math.min(q(14), Math.max(6, slot >> 1));
+    const top = base - wallH;
+    const lead = Math.max(18, q(240));
+
+    for (let x = sx - lead; x < sx; x++) {
+      const t = (x - (sx - lead)) / lead;
+      if (t < 0.08) continue;
+      ctx.globalAlpha = t > 0.72 ? 0.95 : 0.2 + t * 0.7;
+      rect(x, base, 1, ribbon - 1, ink);
+      if (((x + h.lane) & 3) === 0) rect(x, base - 1, 1, 1, ink);
     }
-    const ht = q(26);
-    for (let x = 0; x < w; x += 4) {
-      rect(sx + x, base - ht, 2, ht, PAL.wood0);
-      rect(sx + x, base - ht, 1, ht - 1, PAL.wood3);
+    ctx.globalAlpha = 1;
+
+    rect(sx - 1, base + 1, w + 2, Math.max(2, ribbon - 2), PAL.ink);
+    ctx.globalAlpha = 0.55;
+    rect(sx - 2, base, w + 4, 1, ink);
+    ctx.globalAlpha = 1;
+
+    for (let y = top; y < base; y++) {
+      const stripe = ((y - top) >> 1) & 1;
+      rect(sx + 2, y, Math.max(1, w - 4), 1, stripe ? ink : PAL.ink);
     }
-    rect(sx, base - ht + 3, w, 2, PAL.wood2);
-    rect(sx, base - 5, w, 2, PAL.wood2);
-    for (let x = 0; x < w; x++) rect(sx + x, base - ht, 1, 2, ((x >> 1) & 1) ? PAL.ink : PAL.amber);
-    const on = Math.sin(time * 7) > 0;
-    rect(sx - 1, base - ht - 2, 2, 2, on ? PAL.amber : PAL.wood0);
-    rect(sx + w - 1, base - ht - 2, 2, 2, on ? PAL.wood0 : PAL.amber);
+    rect(sx, top, 2, (base - top) + ribbon - 1, PAL.ink);
+    rect(sx + 1, top, 1, base - top, ink);
+    rect(sx + w - 2, top, 2, (base - top) + ribbon - 1, PAL.ink);
+    rect(sx + w - 2, top, 1, base - top, ink);
+    const scan = (Math.floor(time * 10) + (h.x & 7)) % Math.max(1, w - 4);
+    rect(sx + 2 + scan, top + 1, 1, Math.max(1, base - top - 2), PAL.lamp);
+
+    drawText(String(h.lane + 1), sx - textWidth('0') - 2, base - 6, ink, PAL.ink, false);
+    chevron(sx - Math.max(8, q(36)), base + 2, ink);
+    if (!tall) {
+      for (let x = 2; x < w - 2; x += 3) rect(sx + x, top, 1, 2, PAL.amber);
+    }
+  }
+
+  function strokeLaneEdges(layout) {
+    for (let lane = 0; lane < 4; lane++) {
+      const edge = lane % 2 ? PAL.mag : PAL.cyan;
+      const baseCss = laneBase(lane, layout);
+      for (let c = 0; c < LW; c++) {
+        const y = q(baseCss - queryGround(lane, cameraX + c * S).h);
+        rect(c, y, 1, 1, edge);
+      }
+    }
   }
 
   function signBoard(text, x, bottom, color) {
@@ -1406,8 +1443,9 @@ function updateCountdown(dt) {
       if (sx > W + 30 || sx + h.w < -30) continue;
       const base = q(laneBase(h.lane, layout) - queryGround(h.lane, h.x).h) + 1;
       if (h.kind === 'debris') drawDebris(h, q(sx), base);
-      else drawFence(h, q(sx), base);
+      else drawFence(h, q(sx), base, layout);
     }
+    strokeLaneEdges(layout);
 
     const hints = track.hints;
     for (let i = 0; i < hints.length; i++) {
@@ -1498,7 +1536,7 @@ function updateCountdown(dt) {
     const lane = actor.lane;
     const laneIdx = clamp(Math.round(lane), 0, 3);
     const sx = actor.x - cameraX;
-    const sy = laneBase(lane, layout) - actor.y;
+    const sy = laneBase(lane, layout) - visualHeight(actor.y, layout, lane);
     const g = queryGround(laneIdx, actor.x);
     const shadowY = q(laneBase(laneIdx, layout) - g.h) + 2;
     const sw = Math.max(5, Math.round(12 * (1 - Math.min(0.65, Math.max(0, actor.y - g.h) / 160))));
@@ -1648,11 +1686,12 @@ function updateCountdown(dt) {
     const lane = clamp(Math.round(bike.lane), 0, 3);
     const pips = $('pips').children;
     for (let i = 0; i < pips.length; i++) pips[i].classList.toggle('on', i === lane);
-    const deg = (-bike.pitch * 180 / Math.PI).toFixed(2);
+    const nose = wrapAngle(bike.pitch);
+    const deg = (-nose * 180 / Math.PI).toFixed(2);
     $('horizon-line').style.transform = 'translateY(-50%) rotate(' + deg + 'deg)';
     const attitude = $('attitude');
-    const bad = bike.air && Math.abs(bike.pitch) > TUNE.crashAngle * 0.82;
-    const good = bike.air && Math.abs(bike.pitch) <= TUNE.cleanAngle;
+    const bad = bike.air && Math.abs(nose) > TUNE.hardAngle;
+    const good = bike.air && Math.abs(nose) <= TUNE.cleanAngle;
     attitude.classList.toggle('bad', bad);
     attitude.classList.toggle('good', good);
     const air = phase === 'play' && bike.air && !bike.crashing;
@@ -2052,24 +2091,44 @@ function updateCountdown(dt) {
 
   function registerSW() {
     const badge = $('offline-badge');
+    const markUpdated = () => {
+      badge.textContent = 'UPDATED';
+      badge.classList.add('on');
+    };
+    try {
+      if (sessionStorage.getItem('volt-alley-updated') === '1' || new URLSearchParams(location.search).get('updated') === '1') {
+        sessionStorage.removeItem('volt-alley-updated');
+        markUpdated();
+        const url = new URL(location.href);
+        if (url.searchParams.has('updated')) {
+          url.searchParams.delete('updated');
+          history.replaceState(null, '', url.pathname + url.search + url.hash);
+        }
+      }
+    } catch (err) { /* private mode */ }
     if (!('serviceWorker' in navigator)) {
-      badge.textContent = 'NO SERVICE WORKER';
+      if (badge.textContent !== 'UPDATED') badge.textContent = 'NO SERVICE WORKER';
       return;
     }
     // When an updated worker takes over an already-running copy, reload once so the new files load.
+    // Mid-race stays put so a background update cannot wipe a run.
     const hadController = !!navigator.serviceWorker.controller;
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (!hadController || reloaded) return;
       if (phase === 'play' || phase === 'countdown') return;
       reloaded = true;
+      markUpdated();
+      try { sessionStorage.setItem('volt-alley-updated', '1'); } catch (err) { /* ignore */ }
       window.location.reload();
     });
     navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' }).then((reg) => {
       try { reg.update(); } catch (err) { /* ignore */ }
       navigator.serviceWorker.ready.then(() => {
-        badge.textContent = 'OFFLINE READY';
-        badge.classList.add('on');
+        if (badge.textContent !== 'UPDATED') {
+          badge.textContent = 'OFFLINE READY';
+          badge.classList.add('on');
+        }
       });
     }).catch(() => {
       badge.textContent = 'CACHE FAILED';

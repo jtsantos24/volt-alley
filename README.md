@@ -49,4 +49,4 @@ Graphics are drawn on the canvas. Audio is Web Audio oscillators and noise. Noth
 
 ## Updating an installed copy
 
-The service worker is cache-first under the name `volt-alley-v1` in `sw.js`. When you change the game, bump that name so phones drop the old cache. Wait for **OFFLINE READY** once online before you expect the new version offline.
+The service worker is cache-first under the name `volt-alley-v5` in `sw.js`. When you change the game, bump that name. The next online launch activates the new worker and reloads. The title shows **UPDATED**, then **OFFLINE READY**. A race that is already running is left alone until the next launch.
