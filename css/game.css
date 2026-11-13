@@ -1,9 +1,9 @@
-/* VOLT ALLEY - 16-bit neon dusk.
-   Pixel font: Jersey 10 (SIL OFL 1.1, see fonts/OFL.txt), bundled for offline play. */
+/* VOLT ALLEY - cartoon neon dusk.
+   UI font: Nunito ExtraBold (SIL OFL 1.1, see fonts/Nunito-OFL.txt), bundled for offline play. */
 @font-face {
-  font-family: 'Jersey 10';
-  src: url('../fonts/jersey10-latin.woff2') format('woff2');
-  font-weight: 400;
+  font-family: 'Nunito';
+  src: url('../fonts/nunito-latin-800.woff2') format('woff2');
+  font-weight: 800;
   font-style: normal;
   font-display: swap;
 }
@@ -32,7 +32,7 @@
   --sal: env(safe-area-inset-left, 0px);
   --outline: 2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 2px 0 var(--ink), 0 -2px 0 var(--ink), 2px 2px 0 var(--ink), -2px 2px 0 var(--ink), 2px -2px 0 var(--ink), -2px -2px 0 var(--ink);
   color-scheme: dark;
-  font-family: 'Jersey 10', ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-family: 'Nunito', 'Trebuchet MS', sans-serif;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -53,8 +53,7 @@ html, body {
   -webkit-user-select: none;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  -webkit-font-smoothing: none;
-  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
 }
 
 button, input { font: inherit; color: inherit; }
@@ -77,10 +76,7 @@ button, input { font: inherit; color: inherit; }
   display: block;
   background: var(--bg);
   z-index: 0;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-  image-rendering: -moz-crisp-edges;
-  -ms-interpolation-mode: nearest-neighbor;
+  image-rendering: auto;
 }
 
 #scan, #vignette {
@@ -245,16 +241,16 @@ button, input { font: inherit; color: inherit; }
   top: calc(8px + var(--sat));
   z-index: 7;
   min-width: 64px;
-  height: 36px;
-  padding: 0 10px;
-  border: 2px solid var(--wood0);
-  background: var(--wood2);
+  height: 40px;
+  padding: 0 12px;
+  border: 3px solid #120818;
+  border-radius: 16px;
+  background: linear-gradient(#5a2890, #321858);
   color: var(--cream);
-  box-shadow: inset 0 2px 0 var(--wood4), inset 0 -3px 0 var(--wood1), 0 2px 0 rgba(0, 0, 0, 0.45);
-  letter-spacing: 0.06em;
-  font-size: 20px;
-  font-weight: 400;
-  text-shadow: 1px 1px 0 var(--wood0);
+  box-shadow: 0 4px 0 #120818;
+  letter-spacing: 0.04em;
+  font-size: 16px;
+  font-weight: 800;
 }
 
 #btn-mute { right: calc(8px + var(--sar)); min-width: 100px; }
@@ -280,16 +276,16 @@ button, input { font: inherit; color: inherit; }
 .pad {
   pointer-events: auto;
   touch-action: none;
-  border: 2px solid rgba(46, 23, 13, 0.85);
-  background: rgba(43, 28, 56, 0.45);
-  box-shadow: inset 0 0 0 2px rgba(196, 129, 62, 0.55);
+  border: 3px solid #120818;
+  border-radius: 22px;
+  background: linear-gradient(#4a2878, #2a1458);
+  box-shadow: 0 5px 0 #120818, inset 0 2px 0 rgba(255, 255, 255, 0.28);
   color: var(--cream);
-  letter-spacing: 0.06em;
-  font-size: 20px;
-  font-weight: 400;
-  line-height: 1.1;
+  letter-spacing: 0.04em;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.05;
   text-transform: uppercase;
-  text-shadow: 1px 1px 0 var(--ink);
 }
 
 .pad.held {
@@ -377,7 +373,8 @@ button, input { font: inherit; color: inherit; }
   background:
     repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 2px, transparent 2px 4px),
     var(--panel);
-  border: 4px solid var(--wood2);
+  border: 4px solid #120818;
+  border-radius: 22px;
   box-shadow:
     0 0 0 3px var(--wood0),
     0 6px 0 3px rgba(10, 6, 16, 0.55),
@@ -451,31 +448,22 @@ h2 {
 
 /* wooden buttons with a neon rim */
 .primary, .ghost {
-  min-height: 48px;
+  min-height: 52px;
   padding: 0 18px;
-  letter-spacing: 0.08em;
-  font-weight: 400;
+  letter-spacing: 0.04em;
+  font-weight: 800;
   font-size: 20px;
-  border: 2px solid var(--wood0);
-  background: var(--wood2);
-  color: #fff2d0;
-  text-shadow: 2px 2px 0 var(--wood0);
-  box-shadow:
-    inset 0 3px 0 var(--wood4),
-    inset 0 -4px 0 var(--wood1),
-    0 0 0 2px var(--cyan),
-    0 4px 0 2px var(--ink);
-  transition: transform 0.05s steps(1);
+  border: 3px solid #120818;
+  border-radius: 18px;
+  background: linear-gradient(#5ef6ff, #2aa8c8);
+  color: #120818;
+  box-shadow: 0 5px 0 #120818;
 }
 
 .ghost {
-  background: var(--plum2);
-  color: var(--cream);
-  box-shadow:
-    inset 0 3px 0 #6e5d78,
-    inset 0 -4px 0 #231c2b,
-    0 0 0 2px var(--magenta),
-    0 4px 0 2px var(--ink);
+  background: linear-gradient(#ff7ad8, #c42888);
+  color: #fff;
+  box-shadow: 0 5px 0 #120818;
 }
 
 .primary { animation: pulse 2.4s steps(2) infinite; }

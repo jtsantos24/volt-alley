@@ -371,6 +371,7 @@ function chaseLane(dt) {
         bike.speed = Math.min(TUNE.turboSpeed, bike.speed + 36);
         cleans += 1;
         bike.cleanFlash = 0.28;
+        bike.juice = 1.28;
         toast('CLEAN', 'good');
       }
     }
@@ -533,6 +534,7 @@ function chaseLane(dt) {
       const spun = Math.floor(Math.abs(bike.pitch - (bike.takeoffPitch || 0)) / (Math.PI * 2));
       if (spun > (bike.flips || 0)) {
         bike.flips = spun;
+        bike.juice = 1.34;
         toast('FLIP', 'good');
       }
       bike.vy -= TUNE.gravity * dt;
@@ -559,6 +561,7 @@ function chaseLane(dt) {
 
     if (bike.invuln > 0) bike.invuln -= dt;
     if (bike.cleanFlash > 0) bike.cleanFlash -= dt;
+    if (bike.juice > 1) bike.juice += (1 - bike.juice) * Math.min(1, dt * 8);
     collide(lane);
 
     let onPad = false;
@@ -650,796 +653,561 @@ function updateCountdown(dt) {
   }
 
   // ---------------------------------------------------------------------------
-  // Pixel renderer. The game world still runs in CSS pixels; everything is drawn
-  // into a low-resolution canvas (about 330-480 art pixels wide) and the browser
-  // scales it up with nearest-neighbour filtering for a chunky 16-bit look.
-  // All art is procedural, so nothing extra has to be downloaded.
-  // ---------------------------------------------------------------------------
+// Cartoon renderer. World units stay CSS pixels. Shapes are smooth, outlined, and flat.
   const PAL = {
-    ink: '#0c0614', night: '#140820', plum: '#3a1460', dusk: '#6a1878', rose: '#e23a78', ember: '#ff7a68',
+    ink: '#120818', night: '#140820', plum: '#3a1460', dusk: '#6a1878', rose: '#e23a78', ember: '#ff7a68',
     wood0: '#0c0616', wood1: '#1a1034', wood2: '#2a1850', wood3: '#5ef6ff', wood4: '#ff8ab8', cream: '#ffe4f4',
     stone0: '#100818', stone1: '#241444', stone2: '#32185a', stone3: '#4a2878', stone4: '#6a4098',
-    leaf0: '#120818', leaf1: '#3a1860', leaf2: '#ff4ad0',
-    cyan: '#5ef6ff', mag: '#ff4ad0', amber: '#ffb347', lamp: '#ffe08a', orange: '#ff8c42', rust: '#c45a78',
+    cyan: '#5ef6ff', mag: '#ff4ad0', amber: '#ffb347', lamp: '#ffe08a', orange: '#ff8c42',
   };
-  const GLYPHS = {
-    A: '010101111101101', B: '110101110101110', C: '011100100100011', D: '110101101101110', E: '111100110100111',
-    F: '111100110100100', G: '011100101101011', H: '101101111101101', I: '111010010010111', J: '001001001101010',
-    K: '101101110101101', L: '100100100100111', M: '101111111101101', N: '110101101101101', O: '010101101101010',
-    P: '110101110100100', Q: '010101101110011', R: '110101110101101', S: '011100010001110', T: '111010010010010',
-    U: '101101101101111', V: '101101101101010', W: '101101111111101', X: '101101010101101', Y: '101101010010010',
-    Z: '111001010100111', 0: '111101101101111', 1: '010110010010111', 2: '110001010100111', 3: '110001010001110',
-    4: '101101111001001', 5: '111100110001110', 6: '011100111101111', 7: '111001010010010', 8: '111101111101111',
-    9: '111101111001110', '.': '000000000000010', '-': '000000111000000', ':': '000010000010000', '!': '010010010000010',
-  };
-  const SHOP_WORDS = ['NOODLE', 'TEA', 'BAO', 'SOBA', 'MOCHI', 'RAMEN', 'CAFE', 'SODA', '24H', 'BYTE', 'SEEDS', 'PIE'];
 
-  let S = 2;
-  let LW = 422;
-  let LH = 195;
   let art = null;
-  let bikeSprites = null;
-  const textCache = new Map();
 
-  function q(v) { return Math.round(v / S); }
-  function rect(x, y, w, h, c) {
-    ctx.fillStyle = c;
-    ctx.fillRect(x, y, w, h);
-  }
-  function makeCanvas(w, h) {
-    const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.ceil(w));
-    c.height = Math.max(1, Math.ceil(h));
-    const g = c.getContext('2d');
-    g.imageSmoothingEnabled = false;
-    return [c, g];
-  }
-  function textWidth(s) { return Math.max(0, s.length * 4 - 1); }
-  function blitText(g, s, x, y, color) {
-    g.fillStyle = color;
-    for (let k = 0; k < s.length; k++) {
-      const bits = GLYPHS[s[k]];
-      if (bits) {
-        for (let i = 0; i < 15; i++) if (bits.charCodeAt(i) === 49) g.fillRect(x + (i % 3), y + ((i / 3) | 0), 1, 1);
-      }
-      x += 4;
-    }
-  }
-  function textSprite(s, color, shadow) {
-    const key = s + '|' + color + '|' + (shadow || '');
-    let t = textCache.get(key);
-    if (t) return t;
-    const [c, g] = makeCanvas(textWidth(s) + 1, 6);
-    if (shadow) blitText(g, s, 1, 1, shadow);
-    blitText(g, s, 0, 0, color);
-    textCache.set(key, c);
-    return c;
-  }
-  function drawText(s, x, y, color, shadow, center) {
-    const t = textSprite(s, color, shadow);
-    ctx.drawImage(t, Math.round(center ? x - (t.width >> 1) : x), Math.round(y));
+  function roundPath(x, y, w, h, r) {
+    const rr = Math.max(0, Math.min(r, w / 2, h / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
   }
 
-// ---------- prerendered dusk skyline ----------
-  function glyphSign(g, x, y, w, h, color) {
-    g.fillStyle = '#120818';
-    g.fillRect(x, y, w, h);
+  function paint(fill, strokeW) {
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.lineWidth = strokeW || 4;
+    ctx.strokeStyle = PAL.ink;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+
+  function glyph(g, x, y, w, h, color) {
+    g.fillStyle = '#160824';
+    g.beginPath();
+    const r = 4;
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
+    g.fill();
+    g.strokeStyle = color;
+    g.lineWidth = 2;
+    g.stroke();
     g.fillStyle = color;
-    g.fillRect(x, y, w, 1);
-    g.fillRect(x, y + h - 1, w, 1);
-    g.fillRect(x, y, 1, h);
-    g.fillRect(x + w - 1, y, 1, h);
-    const style = (x * 3 + y) & 3;
+    const style = (x + y) & 3;
     if (style === 0) {
-      g.fillRect(x + 2, y + 2, Math.max(1, w - 4), 1);
-      g.fillRect(x + 2, y + 4, Math.max(1, (w >> 1) - 1), 1);
+      g.fillRect(x + 4, y + 4, w - 8, 3);
+      g.fillRect(x + 4, y + h - 7, (w >> 1), 3);
     } else if (style === 1) {
-      g.fillRect(x + 2, y + 2, 2, Math.max(1, h - 4));
-      g.fillRect(x + 5, y + 3, Math.max(1, w - 7), 1);
+      g.beginPath();
+      g.arc(x + w * 0.35, y + h * 0.5, 3, 0, Math.PI * 2);
+      g.fill();
+      g.fillRect(x + w * 0.5, y + 4, w * 0.35, 3);
     } else if (style === 2) {
-      g.fillRect(x + 2, y + 2, 1, 1);
-      g.fillRect(x + 3, y + 3, 1, 1);
-      g.fillRect(x + 4, y + 4, 1, 1);
-      g.fillRect(x + 5, y + 3, 1, 1);
-      g.fillRect(x + 6, y + 2, 1, 1);
+      g.beginPath();
+      g.moveTo(x + 4, y + h - 4);
+      g.lineTo(x + w * 0.5, y + 4);
+      g.lineTo(x + w - 4, y + h - 4);
+      g.fill();
     } else {
-      for (let i = 2; i < w - 2; i += 2) g.fillRect(x + i, y + 2 + (i & 2), 1, 1);
+      for (let i = 4; i < w - 4; i += 5) g.fillRect(x + i, y + 4 + (i % 6), 3, 3);
     }
   }
 
-  function tower(g, x, hy, w, h, body, edge, windows, rand) {
-    const top = hy - h;
-    g.fillStyle = body;
-    g.fillRect(x, top, w, h + 1);
-    if (edge) {
-      g.fillStyle = edge;
-      g.fillRect(x, top, 1, h + 1);
-      if (w > 5) g.fillRect(x + w - 1, top, 1, h + 1);
-    }
-    g.fillStyle = edge || '#ff8ab8';
-    g.fillRect(x, top, w, 1);
-    if (w > 7) {
-      const inset = 1 + ((w > 10) ? 1 : 0);
-      g.fillStyle = body;
-      g.fillRect(x + inset, top - 4, w - inset * 2, 4);
-      if (w > 10) g.fillRect(x + inset + 1, top - 8, w - inset * 2 - 2, 4);
-    }
-    const ax = x + (w >> 1);
-    g.fillStyle = edge || PAL.mag;
-    g.fillRect(ax, top - 14, 1, 8);
-    g.fillRect(ax, top - 15, 1, 1);
-    if (windows) {
-      for (let wy = top + 4; wy < hy - 2; wy += 3) {
-        for (let wx = x + 2; wx < x + w - 2; wx += 2) {
-          if (((wx * 5 + wy * 3) & 7) < 3) continue;
-          g.fillStyle = ((wx + wy) & 4) ? PAL.cyan : '#9af6ff';
-          g.fillRect(wx, wy, 1, 1);
-        }
+  function spire(g, x, ground, w, h, body, edge, rand) {
+    const top = ground - h;
+    const grd = g.createLinearGradient(x, top, x + w, ground);
+    grd.addColorStop(0, edge || '#6a4098');
+    grd.addColorStop(0.18, body);
+    grd.addColorStop(1, '#100818');
+    g.fillStyle = grd;
+    g.beginPath();
+    g.moveTo(x + w * 0.15, ground);
+    g.lineTo(x + w * 0.28, top + h * 0.18);
+    g.lineTo(x + w * 0.42, top);
+    g.lineTo(x + w * 0.58, top + h * 0.08);
+    g.lineTo(x + w * 0.72, top + h * 0.22);
+    g.lineTo(x + w * 0.88, ground);
+    g.closePath();
+    g.fill();
+    g.lineWidth = 3;
+    g.strokeStyle = PAL.ink;
+    g.stroke();
+    g.strokeStyle = edge || PAL.cyan;
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(x + w * 0.2, ground - 4);
+    g.lineTo(x + w * 0.42, top + 4);
+    g.stroke();
+    g.fillStyle = PAL.cyan;
+    for (let wy = top + 14; wy < ground - 8; wy += 7) {
+      for (let k = 0; k < 2; k++) {
+        const wx = x + w * (0.38 + k * 0.16);
+        if (((wy + k * 3) % 11) < 6) g.fillRect(wx, wy, 2, 2);
       }
     }
-    if (rand && rand() > 0.55 && w > 8 && h > 18) {
-      const colors = [PAL.cyan, PAL.mag, PAL.amber, '#ff7a9a'];
-      const col = colors[(rand() * colors.length) | 0];
-      const bw = Math.min(w + 2, 8 + ((rand() * 6) | 0));
-      const bh = 6 + ((rand() * 3) | 0);
-      const bx = x + (((w - bw) / 2) | 0);
-      glyphSign(g, bx, top + 4 + ((rand() * Math.max(1, h * 0.4)) | 0), bw, bh, col);
+    if (rand() > 0.5) {
+      const bw = Math.min(w * 0.7, 36);
+      const bh = 16;
+      glyph(g, x + (w - bw) / 2, top + h * 0.28, bw, bh, rand() > 0.5 ? PAL.mag : (rand() > 0.5 ? PAL.amber : PAL.cyan));
     }
-    if (rand && rand() > 0.72 && w > 6) {
-      const py = top + 6 + ((rand() * 10) | 0);
+    if (rand() > 0.65) {
       g.fillStyle = '#1a1038';
-      g.fillRect(x + w, py, 6, 2);
-      g.fillStyle = PAL.cyan;
-      g.fillRect(x + w, py, 6, 1);
-      g.fillRect(x + w + 5, py - 1, 1, 1);
+      g.fillRect(x + w * 0.7, top + 18, 22, 6);
+      g.strokeStyle = PAL.cyan;
+      g.strokeRect(x + w * 0.7, top + 18, 22, 6);
     }
+  }
+
+  function buildLayer(seed, parallax, opt) {
+    const width = opt.width;
+    const h = opt.ground;
+    const c = document.createElement('canvas');
+    c.width = width;
+    c.height = h + 8;
+    const g = c.getContext('2d');
+    const rand = mulberry32(seed);
+    let x = 0;
+    while (x < width - 10) {
+      const w = opt.minW + rand() * opt.varW;
+      const bh = h * (opt.minH + rand() * opt.varH);
+      spire(g, x, h, w, bh, opt.body, opt.edge, rand);
+      x += w + opt.gap + rand() * opt.gap;
+    }
+    return { canvas: c, width: width, parallax: parallax };
   }
 
   function buildSky(hy) {
-    const h = hy + 16;
-    const [c, g] = makeCanvas(LW, h);
-    const bands = ['#12061c', '#2a0840', '#6a1468', '#d42878', '#ff5c86', '#ff8a72'];
-    const n = bands.length - 1;
-    for (let y = 0; y < h; y++) {
-      const t = Math.pow(y / Math.max(1, h - 1), 1.15) * n;
-      const i = Math.min(n - 1, Math.floor(t));
-      const f = t - i;
-      g.fillStyle = f < 0.45 ? bands[i] : bands[i + 1];
-      g.fillRect(0, y, LW, 1);
-      if ((y & 1) === 0) {
-        g.fillStyle = bands[Math.min(n, i + 1)];
-        for (let x = (y & 2); x < LW; x += 3) g.fillRect(x, y, 1, 1);
-      }
-    }
+    const c = document.createElement('canvas');
+    c.width = Math.max(2, W);
+    c.height = hy + 30;
+    const g = c.getContext('2d');
+    const sky = g.createLinearGradient(0, 0, 0, c.height);
+    sky.addColorStop(0, '#1a0830');
+    sky.addColorStop(0.35, '#6a1870');
+    sky.addColorStop(0.62, '#e23a78');
+    sky.addColorStop(0.82, '#ff6a86');
+    sky.addColorStop(1, '#ff9a78');
+    g.fillStyle = sky;
+    g.fillRect(0, 0, c.width, c.height);
     const rand = mulberry32(11);
-    const clouds = [
-      ['#ff4d88', '#ff8aaa'],
-      ['#e03078', '#ff6a62'],
-      ['#7a38c8', '#c45ad4'],
-      ['#ff6a58', '#ffb090'],
-      ['#ff3aa0', '#ff7ad0'],
-    ];
-    for (let i = 0; i < 22; i++) {
-      const cx = (rand() * LW) | 0;
-      const cy = (rand() * h * 0.9) | 0;
-      const cw = 12 + ((rand() * 34) | 0);
-      const ch = 4 + ((rand() * 7) | 0);
-      const pair = clouds[(rand() * clouds.length) | 0];
-      g.fillStyle = pair[0];
-      g.fillRect(cx, cy, cw, ch);
-      g.fillStyle = pair[1];
-      g.fillRect(cx + 2, cy - 2, Math.max(2, cw - 8), 2);
-      g.fillRect(cx + 1, cy + ch, Math.max(2, cw - 5), 2);
-      g.fillStyle = pair[1];
-      for (let x = cx; x < cx + cw; x += 2) g.fillRect(x, cy, 1, 1);
-      g.fillStyle = '#ffd0e4';
-      g.fillRect(cx + 3, cy + 1, Math.max(1, (cw >> 2)), 1);
+    const tones = ['#ff4d88', '#ff7aa8', '#e03078', '#ff6a58', '#c45ad4', '#ffb090'];
+    for (let i = 0; i < 16; i++) {
+      const cx = rand() * c.width;
+      const cy = rand() * c.height * 0.85;
+      const rx = 28 + rand() * 70;
+      const ry = 12 + rand() * 22;
+      const grd = g.createRadialGradient(cx, cy, 4, cx, cy, rx);
+      grd.addColorStop(0, tones[(rand() * tones.length) | 0]);
+      grd.addColorStop(1, 'rgba(255,80,140,0)');
+      g.fillStyle = grd;
+      g.beginPath();
+      g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      g.fill();
     }
-    return { canvas: c, twinkles: [] };
-  }
-
-  function buildSpires(hy, seed, parallax, opts) {
-    const width = opts.width;
-    const [c, g] = makeCanvas(width, hy + 1);
-    const rand = mulberry32(seed);
-    let x = 0;
-    while (x < width - 8) {
-      const w = opts.minW + ((rand() * opts.varW) | 0);
-      const h = Math.round(hy * (opts.minH + rand() * opts.varH));
-      tower(g, x, hy, w, h, opts.body, opts.edge && rand() > opts.edgeSkip ? opts.edge : null, opts.windows, opts.signs ? rand : null);
-      x += w + opts.gap + ((rand() * opts.gapVar) | 0);
-    }
-    return { canvas: c, width: width, parallax: parallax, base: hy + 1 };
-  }
-
-  function buildFar(hy) {
-    return buildSpires(hy, 101, 0.06, {
-      width: 1500, minW: 3, varW: 5, minH: 0.18, varH: 0.28,
-      body: '#6a4a90', edge: null, edgeSkip: 1, windows: false, signs: false, gap: 2, gapVar: 4,
-    });
-  }
-
-  function buildMidFar(hy) {
-    return buildSpires(hy, 151, 0.14, {
-      width: 1700, minW: 4, varW: 6, minH: 0.26, varH: 0.32,
-      body: '#3a2468', edge: '#9a78d0', edgeSkip: 0.45, windows: true, signs: false, gap: 1, gapVar: 3,
-    });
-  }
-
-  function buildMid(hy) {
-    return buildSpires(hy, 202, 0.28, {
-      width: 1900, minW: 6, varW: 8, minH: 0.32, varH: 0.36,
-      body: '#241448', edge: '#7ae8ff', edgeSkip: 0.25, windows: true, signs: true, gap: 1, gapVar: 3,
-    });
-  }
-
-  function buildNear(hy) {
-    return buildSpires(hy, 303, 0.48, {
-      width: 1600, minW: 7, varW: 9, minH: 0.36, varH: 0.32,
-      body: '#140c30', edge: '#5ef6ff', edgeSkip: 0.1, windows: true, signs: true, gap: 2, gapVar: 4,
-    });
+    return c;
   }
 
   function buildArt() {
     const layout = layoutMetrics();
-    const hy = q(layout.horizon);
-    const nearBase = q(layout.trackTop - 16) + 2;
+    const hy = Math.max(80, layout.horizon);
     art = {
       hy: hy,
+      w: W,
       sky: buildSky(hy),
-      layers: [buildFar(hy), buildMidFar(hy), buildMid(hy), buildNear(hy)],
-      nearBase: nearBase,
+      layers: [
+        buildLayer(101, 0.08, { width: 1400, ground: hy, minW: 18, varW: 16, minH: 0.22, varH: 0.28, gap: 10, body: '#6a4a90', edge: null }),
+        buildLayer(151, 0.16, { width: 1600, ground: hy, minW: 22, varW: 18, minH: 0.32, varH: 0.3, gap: 8, body: '#3a2468', edge: '#b794f0' }),
+        buildLayer(202, 0.3, { width: 1800, ground: hy, minW: 28, varW: 22, minH: 0.4, varH: 0.34, gap: 8, body: '#241448', edge: '#7ae8ff' }),
+        buildLayer(303, 0.48, { width: 1600, ground: hy, minW: 34, varW: 26, minH: 0.46, varH: 0.32, gap: 12, body: '#160c30', edge: '#5ef6ff' }),
+      ],
     };
   }
 
   function buildCity() {
     buildArt();
-    if (!bikeSprites) bikeSprites = buildBikeSprites();
   }
 
-  // ---------- bike sprite ----------
-  function bikeSprite(glow, frame) {
-    const SW = 52;
-    const SH = 27;
-    const OX = 25;
-    const OY = 21;
-    const grid = new Array(SW * SH).fill(null);
-    const set = (x, y, col) => {
-      const X = x + OX;
-      const Y = y + OY;
-      if (X >= 0 && X < SW && Y >= 0 && Y < SH) grid[Y * SW + X] = col;
-    };
-    const row = (y, x0, x1, col) => { for (let x = x0; x <= x1; x++) set(x, y, col); };
-    const pod = '#2a2232';
-    row(1, -14, -3, pod); row(2, -13, -4, pod); row(1, 8, 16, pod); row(2, 9, 15, pod);
-    row(3, -12, -5, glow); row(3, 10, 14, glow);
-    row(-7, 1, 7, PAL.cream);
-    row(-6, -3, 12, PAL.cream);
-    row(-5, -9, 17, PAL.cream);
-    row(-4, -14, 20, PAL.orange);
-    row(-3, -16, 22, PAL.orange);
-    row(-2, -17, 23, PAL.orange);
-    row(-1, -16, 21, '#c4532e');
-    row(0, -14, 18, '#6b2a2a');
-    row(-3, -12, 18, glow);
-    row(-5, -6, -2, '#ffd9a8');
-    row(-9, 15, 16, '#9fe2ee'); row(-8, 14, 17, '#9fe2ee'); row(-7, 13, 18, '#7cc6d8'); row(-6, 13, 18, '#7cc6d8');
-    set(-17, -5, PAL.mag); set(-18, -5, PAL.mag); set(-18, -6, PAL.mag); set(-19, -6, PAL.mag);
-    set(-19, -7, PAL.mag); set(-20, -7, PAL.mag); set(-20, -8, PAL.mag); set(-21, -8, PAL.mag); set(-21, -9, PAL.mag);
-    set(23, -3, '#fff2b0'); set(22, -3, '#fff2b0'); set(-16, -3, PAL.mag);
-    row(-8, 0, 6, pod); row(-7, 1, 5, pod); set(6, -6, PAL.ink); set(7, -6, PAL.ink);
-    const jacket = '#7b3fa0';
-    row(-13, 2, 5, jacket); row(-12, 1, 6, jacket); row(-11, 1, 6, jacket); row(-10, 1, 6, jacket); row(-9, 1, 6, jacket);
-    set(5, -12, '#a35cc8'); set(5, -11, '#a35cc8'); set(4, -12, '#a35cc8');
-    row(-10, 7, 11, jacket); row(-9, 10, 12, jacket); set(13, -9, pod); set(14, -9, pod); set(14, -8, PAL.stone3);
-    const helm = '#eef2f6';
-    row(-18, 3, 7, helm); row(-17, 2, 8, helm); row(-16, 2, 9, helm); row(-15, 2, 9, helm); row(-14, 3, 8, helm);
-    row(-16, 6, 9, glow); row(-15, 7, 9, glow);
-    set(4, -17, PAL.mag); set(4, -16, PAL.mag); set(4, -15, PAL.mag);
-    if (frame === 0) { row(-13, -2, 1, PAL.mag); row(-12, -5, -2, PAL.mag); set(-6, -11, PAL.mag); set(-7, -11, PAL.mag); }
-    else { row(-13, -2, 1, PAL.mag); row(-14, -5, -2, PAL.mag); row(-13, -7, -6, PAL.mag); }
-    const out = grid.slice();
-    for (let y = 0; y < SH; y++) {
-      for (let x = 0; x < SW; x++) {
-        if (grid[y * SW + x]) continue;
-        const n = (x > 0 && grid[y * SW + x - 1]) || (x < SW - 1 && grid[y * SW + x + 1]) ||
-          (y > 0 && grid[(y - 1) * SW + x]) || (y < SH - 1 && grid[(y + 1) * SW + x]);
-        if (n) out[y * SW + x] = PAL.ink;
-      }
-    }
-    const [c, g] = makeCanvas(SW, SH);
-    for (let i = 0; i < out.length; i++) {
-      if (!out[i]) continue;
-      g.fillStyle = out[i];
-      g.fillRect(i % SW, (i / SW) | 0, 1, 1);
-    }
-    return { canvas: c, ox: OX, oy: OY };
-  }
-  function buildBikeSprites() {
-    const s = {};
-    const glows = { cyan: PAL.cyan, amber: PAL.amber, mag: PAL.mag };
-    for (const k in glows) for (let f = 0; f < 2; f++) s[k + f] = bikeSprite(glows[k], f);
-    return s;
-  }
-
-  // ---------- per-frame drawing ----------
-  function drawSky(layout) {
-    void layout;
-    ctx.drawImage(art.sky.canvas, 0, 0);
-    ctx.globalAlpha = 0.45;
-    rect(0, Math.max(0, art.hy - 5), LW, 5, '#ff5a86');
-    ctx.globalAlpha = 0.25;
-    rect(0, Math.max(0, art.hy - 8), LW, 3, '#ffb090');
-    ctx.globalAlpha = 1;
-  }
-
-  function drawStrip(layer, y) {
+  function drawStrip(layer) {
     const w = layer.width;
-    let off = Math.round((cameraX * layer.parallax) / S) % w;
+    let off = (cameraX * layer.parallax) % w;
     if (off < 0) off += w;
     let x = -off;
-    while (x < LW) {
+    const y = art.hy - layer.canvas.height + 8;
+    while (x < W) {
       ctx.drawImage(layer.canvas, x, y);
       x += w;
     }
   }
 
-  function drawCity(layout) {
-    void layout;
-    for (let i = 0; i < art.layers.length; i++) drawStrip(art.layers[i], 0);
-    const y = art.hy - 1;
-    const scroll = Math.round((cameraX * 0.55) / S);
+  function drawSky() {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#1a0830');
+    g.addColorStop(0.45, '#c42878');
+    g.addColorStop(1, '#140820');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(art.sky, 0, 0, W, art.hy + 24);
+  }
+
+  function drawCity() {
+    for (let i = 0; i < art.layers.length; i++) drawStrip(art.layers[i]);
+    const y = art.hy - 2;
+    const scroll = cameraX * 0.6;
     const cols = [PAL.cyan, PAL.mag, PAL.amber, '#ff7a9a'];
-    for (let i = 0; i < 8; i++) {
-      const span = LW + 48;
-      let x = ((i * 53 - scroll) % span + span) % span - 24;
-      ctx.globalAlpha = 0.55 + (i % 3) * 0.12;
-      rect(x, y - (i & 1), 6 + (i % 4) * 3, 1, cols[i % cols.length]);
+    ctx.globalAlpha = 0.85;
+    for (let i = 0; i < 7; i++) {
+      const span = W + 80;
+      let x = ((i * 90 - scroll) % span + span) % span - 40;
+      ctx.fillStyle = cols[i % cols.length];
+      ctx.fillRect(x, y - (i % 2) * 3, 18 + (i % 3) * 10, 3);
     }
     ctx.globalAlpha = 1;
   }
 
-  function drawShoulder(layout) {
-    const y = q(laneBase(3, layout) + 18);
-    if (y >= LH) return;
-    rect(0, y, LW, LH - y, PAL.wood1);
-    rect(0, y, LW, 2, PAL.leaf2);
-    rect(0, y + 2, LW, 2, PAL.leaf1);
-    rect(0, y + 4, LW, 1, PAL.leaf0);
-    const scroll = Math.round((cameraX * 1.15) / S);
-    for (let k = -1; k < LW / 9 + 1; k++) {
-      const wx = k + Math.floor(scroll / 9);
-      const x = wx * 9 - scroll;
-      const n = hash(wx * 13.1);
-      rect(x + 2, y - 1, 1, 1, PAL.leaf2);
-      if (n > 0.6) rect(x + 5, y - 2, 1, 2, PAL.leaf1);
-      if (n > 0.82) rect(x + 5, y - 3, 1, 1, n > 0.92 ? PAL.mag : PAL.lamp);
-      if (n < 0.25) rect(x + 1, y + 7 + ((n * 20) | 0) % 6, 2, 1, PAL.wood2);
-      if (n > 0.45 && n < 0.5) { ctx.globalAlpha = 0.5; rect(x, y + 6, 6, 1, PAL.cyan); ctx.globalAlpha = 1; }
+  function laneSamples(layout, lane) {
+    const pts = [];
+    for (let x = cameraX - 30; x <= cameraX + W + 30; x += 12) {
+      pts.push({ x: x - cameraX, y: laneBase(lane, layout) - queryGround(lane, x).h });
     }
+    return pts;
   }
 
-  function drawDeck(layout) {
-    const top = q(layout.trackTop - 16);
-    const bot = q(laneBase(3, layout) + 18);
-    rect(0, top, LW, bot - top, '#140c28');
-    const camL = Math.round(cameraX / S);
-    let r = 0;
-    for (let y = top + 6; y < bot; y += 8, r++) {
-      rect(0, y, LW, 1, '#241448');
-      const stagger = (r * 17) % 32;
-      let sx = -((camL + stagger) % 32);
-      if (sx > 0) sx -= 32;
-      for (let x = sx; x < LW; x += 32) rect(x, y - 1, 1, 2, '#10081c');
-    }
-    ctx.globalAlpha = 0.35;
-    rect(0, top, LW, 1, PAL.wood3);
-    ctx.globalAlpha = 1;
+  function traceRibbon(pts, depth) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y + depth);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y + depth);
+    for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath();
   }
 
   function drawLanes(layout) {
-    drawDeck(layout);
-    const T = Math.max(4, q(11) + 1);
-    const TILE = 16;
-    for (let lane = 0; lane < 4; lane++) {
-      const baseCss = laneBase(lane, layout);
-      const flatY = q(baseCss);
-      const edge = lane % 2 ? PAL.mag : PAL.cyan;
-      const a = lane % 2 ? '#321860' : '#241450';
-      const b = lane % 2 ? '#241450' : '#321860';
-      let segStart = 0;
-      let segY = null;
-      let segTile = null;
-      const flush = (c1) => {
-        if (segY === null) return;
-        const w = c1 - segStart;
-        if (w <= 0) return;
-        if (segY < flatY) {
-          rect(segStart, segY + T, w, flatY - segY, PAL.wood1);
-          for (let x = segStart; x < c1; x++) {
-            const wx = Math.floor((cameraX + x * S) / 6);
-            if (wx % 4 === 0) rect(x, segY + T, 1, flatY - segY, PAL.wood0);
-          }
-        }
-        rect(segStart, segY, w, 1, edge);
-        rect(segStart, segY + 1, w, 1, PAL.stone4);
-        rect(segStart, segY + 2, w, T - 3, (segTile & 1) ? a : b);
-        rect(segStart, segY + T - 1, w, 1, PAL.stone0);
-        const tileX = Math.floor((cameraX + segStart * S) / TILE);
-        if (tileX * TILE >= cameraX + (segStart - 1) * S) rect(segStart, segY + 2, 1, T - 3, PAL.stone1);
-      };
-      for (let c = 0; c <= LW; c++) {
-        const wx = cameraX + c * S;
-        const y = c < LW ? q(baseCss - queryGround(lane, wx).h) : null;
-        const tile = Math.floor(wx / TILE);
-        if (y !== segY || tile !== segTile) {
-          flush(c);
-          segStart = c;
-          segY = y;
-          segTile = tile;
-        }
-      }
-      ctx.globalAlpha = 0.6;
-      const mark = Math.floor((cameraX - 24) / 520) * 520;
-      for (let x = mark; x < cameraX + W + 48; x += 520) {
-        const yy = q(baseCss - queryGround(lane, x).h);
-        drawText(String(lane + 1), q(x - cameraX), yy + 2 + ((T - 5) >> 1) - 1, edge, null, false);
-      }
-      ctx.globalAlpha = 1;
+    const bedTop = layout.trackTop - 8;
+    const bed = ctx.createLinearGradient(0, bedTop, 0, H);
+    bed.addColorStop(0, '#3a2068');
+    bed.addColorStop(0.2, '#241448');
+    bed.addColorStop(1, '#100818');
+    ctx.fillStyle = bed;
+    ctx.fillRect(0, bedTop, W, H - bedTop);
+    for (let lane = 3; lane >= 0; lane--) {
+      const pts = laneSamples(layout, lane);
+      if (pts.length < 2) continue;
+      const color = lane % 2 ? PAL.mag : PAL.cyan;
+      traceRibbon(pts, 26);
+      const shade = ctx.createLinearGradient(0, pts[0].y, 0, pts[0].y + 26);
+      shade.addColorStop(0, lane % 2 ? '#5a2878' : '#2a4a78');
+      shade.addColorStop(0.35, '#1a1034');
+      shade.addColorStop(1, '#100818');
+      ctx.fillStyle = shade;
+      ctx.fill();
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = PAL.ink;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+      ctx.stroke();
     }
   }
 
-  function chevron(x, y, c) {
-    rect(x - 2, y + 1, 1, 1, c);
-    rect(x - 1, y, 1, 1, c);
-    rect(x, y - 1, 1, 1, c);
-    rect(x + 1, y, 1, 1, c);
-    rect(x + 2, y + 1, 1, 1, c);
-  }
+  function drawShoulder() { /* the lane bed already fills the lower screen */ }
 
-  function drawDebris(h, sx, base) {
-    const w = q(h.w);
-    const rand = mulberry32(h.x | 0);
-    let x = 0;
-    while (x < w - 3) {
-      const r = rand();
-      const X = sx + x;
-      if (r < 0.4) {
-        rect(X, base - 7, 8, 7, PAL.wood0);
-        rect(X + 1, base - 6, 6, 5, PAL.wood2);
-        rect(X + 1, base - 6, 6, 1, PAL.wood3);
-        rect(X + 3, base - 6, 1, 5, PAL.wood1);
-        rect(X + 1, base - 4, 6, 1, PAL.wood1);
-        x += 8;
-      } else if (r < 0.7) {
-        rect(X, base - 8, 6, 8, PAL.ink);
-        rect(X + 1, base - 7, 4, 7, PAL.rust);
-        rect(X + 1, base - 6, 4, 1, PAL.ink);
-        rect(X + 1, base - 3, 4, 1, PAL.ink);
-        rect(X + 2, base - 7, 1, 2, PAL.orange);
-        x += 6;
-      } else {
-        rect(X, base - 5, 7, 5, PAL.ink);
-        rect(X + 1, base - 4, 5, 4, '#3b4d3a');
-        rect(X + 2, base - 4, 2, 1, '#5d7a52');
-        rect(X + 3, base - 6, 1, 1, PAL.ink);
-        x += 7;
-      }
-      x += (rand() * 2) | 0;
+  function drawEnergyWall(h, layout) {
+    const lane = h.lane;
+    const color = lane % 2 ? PAL.mag : PAL.cyan;
+    const pts = laneSamples(layout, lane);
+    let roadY = laneBase(lane, layout);
+    for (let i = 0; i < pts.length; i++) {
+      if (Math.abs((pts[i].x + cameraX) - h.x) < 20) { roadY = pts[i].y; break; }
     }
-    if (Math.sin(time * 8) > 0) rect(sx, base - 1, Math.max(2, w), 1, PAL.amber);
-  }
-
-  function drawFence(h, sx, base, layout) {
-    const w = Math.max(4, q(h.w));
+    const sx = h.x - cameraX;
     const tall = h.clear > 200;
-    const ink = h.lane % 2 ? PAL.mag : PAL.cyan;
-    const ribbon = Math.max(4, q(11) + 1);
-    const slot = Math.max(ribbon + 3, q(layout.laneGap) - 2);
-    const wallH = tall ? Math.max(ribbon + 2, slot - 1) : Math.min(q(14), Math.max(6, slot >> 1));
-    const top = base - wallH;
-    const lead = Math.max(18, q(240));
-
-    for (let x = sx - lead; x < sx; x++) {
-      const t = (x - (sx - lead)) / lead;
-      if (t < 0.08) continue;
-      ctx.globalAlpha = t > 0.72 ? 0.95 : 0.2 + t * 0.7;
-      rect(x, base, 1, ribbon - 1, ink);
-      if (((x + h.lane) & 3) === 0) rect(x, base - 1, 1, 1, ink);
-    }
-    ctx.globalAlpha = 1;
-
-    rect(sx - 1, base + 1, w + 2, Math.max(2, ribbon - 2), PAL.ink);
+    const slot = Math.max(28, layout.laneGap - 6);
+    const wallH = tall ? slot : 18;
+    const lead = 240;
+    const glow = ctx.createLinearGradient(sx - lead, 0, sx, 0);
+    glow.addColorStop(0, 'rgba(0,0,0,0)');
+    glow.addColorStop(1, color);
     ctx.globalAlpha = 0.55;
-    rect(sx - 2, base, w + 4, 1, ink);
+    ctx.fillStyle = glow;
+    ctx.fillRect(sx - lead, roadY + 4, lead, 16);
     ctx.globalAlpha = 1;
-
-    for (let y = top; y < base; y++) {
-      const stripe = ((y - top) >> 1) & 1;
-      rect(sx + 2, y, Math.max(1, w - 4), 1, stripe ? ink : PAL.ink);
-    }
-    rect(sx, top, 2, (base - top) + ribbon - 1, PAL.ink);
-    rect(sx + 1, top, 1, base - top, ink);
-    rect(sx + w - 2, top, 2, (base - top) + ribbon - 1, PAL.ink);
-    rect(sx + w - 2, top, 1, base - top, ink);
-    const scan = (Math.floor(time * 10) + (h.x & 7)) % Math.max(1, w - 4);
-    rect(sx + 2 + scan, top + 1, 1, Math.max(1, base - top - 2), PAL.lamp);
-
-    drawText(String(h.lane + 1), sx - textWidth('0') - 2, base - 6, ink, PAL.ink, false);
-    chevron(sx - Math.max(8, q(36)), base + 2, ink);
-    if (!tall) {
-      for (let x = 2; x < w - 2; x += 3) rect(sx + x, top, 1, 2, PAL.amber);
-    }
+    ctx.fillStyle = 'rgba(8,4,16,0.55)';
+    roundPath(sx - 6, roadY + 8, h.w + 12, 14, 7);
+    ctx.fill();
+    const body = ctx.createLinearGradient(0, roadY - wallH, 0, roadY + 18);
+    body.addColorStop(0, 'rgba(255,255,255,0.2)');
+    body.addColorStop(0.2, color);
+    body.addColorStop(1, '#100818');
+    roundPath(sx, roadY - wallH, h.w, wallH + 18, 8);
+    paint(body, 4);
+    ctx.fillStyle = PAL.ink;
+    ctx.font = '800 16px Nunito, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(lane + 1), sx + h.w / 2, roadY - wallH * 0.45);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(sx - 28, roadY + 14);
+    ctx.lineTo(sx - 14, roadY + 6);
+    ctx.lineTo(sx - 28, roadY - 2);
+    ctx.stroke();
   }
 
-  function strokeLaneEdges(layout) {
-    for (let lane = 0; lane < 4; lane++) {
-      const edge = lane % 2 ? PAL.mag : PAL.cyan;
-      const baseCss = laneBase(lane, layout);
-      for (let c = 0; c < LW; c++) {
-        const y = q(baseCss - queryGround(lane, cameraX + c * S).h);
-        rect(c, y, 1, 1, edge);
-      }
-    }
-  }
-
-  function signBoard(text, x, bottom, color) {
-    const tw = textWidth(text);
-    const w = tw + 6;
-    const y = bottom - 9;
-    rect(x + 2, bottom, 1, 4, PAL.wood0);
-    rect(x - 1, y - 1, w + 2, 11, PAL.wood0);
-    rect(x, y, w, 9, PAL.wood2);
-    rect(x, y, w, 1, PAL.wood3);
-    rect(x, y + 8, w, 1, PAL.wood1);
-    drawText(text, x + 3, y + 2, color, PAL.wood0, false);
+  function drawDebris(h, layout) {
+    const y = laneBase(h.lane, layout) - queryGround(h.lane, h.x).h;
+    const x = h.x - cameraX;
+    roundPath(x, y - 16, h.w, 18, 6);
+    paint('#3a2858', 3);
+    ctx.fillStyle = PAL.amber;
+    ctx.beginPath();
+    ctx.arc(x + h.w * 0.3, y - 8, 4, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   function drawDecals(layout) {
-    const ramps = track.ramps;
     for (let lane = 0; lane < 4; lane++) {
-      const list = ramps[lane];
+      const list = track.ramps[lane];
+      ctx.fillStyle = PAL.amber;
       for (let i = 0; i < list.length; i++) {
         const r = list[i];
-        if (r.x + r.len < cameraX - 20 || r.x > cameraX + W + 20) continue;
+        if (r.x > cameraX + W + 40 || r.x + r.len < cameraX - 40) continue;
         for (let k = 1; k <= 3; k++) {
           const t = k / 4;
-          const x = r.x + r.len * t;
-          const hh = r.h * Math.pow(t, r.p);
-          chevron(q(x - cameraX), q(laneBase(lane, layout) - hh) + 3, PAL.amber);
+          const x = r.x + r.len * t - cameraX;
+          const y = laneBase(lane, layout) - r.h * Math.pow(t, r.p);
+          ctx.beginPath();
+          ctx.moveTo(x - 8, y + 8);
+          ctx.lineTo(x, y - 2);
+          ctx.lineTo(x + 8, y + 8);
+          ctx.fill();
         }
       }
     }
-
     const pads = track.pads;
     for (let i = 0; i < pads.length; i++) {
       const p = pads[i];
-      const sx = p.x - cameraX;
-      if (sx > W || sx + p.len < 0) continue;
-      const X = q(sx);
-      const y = q(laneBase(p.lane, layout) - queryGround(p.lane, p.x + 8).h);
-      ctx.globalAlpha = 0.45 + Math.sin(time * 5 + p.x * 0.01) * 0.2;
-      rect(X, y + 1, q(p.len), 3, PAL.cyan);
-      ctx.globalAlpha = 1;
-      for (let k = 6; k < q(p.len); k += 14) {
-        const tw = (Math.sin(time * 6 + k) > 0.3) ? '#ffffff' : '#b8fff8';
-        rect(X + k, y + 2, 1, 1, tw);
-      }
-      drawText('COOL', X + 3, y - 7, PAL.cyan, PAL.ink, false);
+      if (p.x > cameraX + W || p.x + p.len < cameraX) continue;
+      const y = laneBase(p.lane, layout) - queryGround(p.lane, p.x).h;
+      roundPath(p.x - cameraX, y + 2, p.len, 14, 7);
+      ctx.fillStyle = 'rgba(94,246,255,0.45)';
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = PAL.cyan;
+      ctx.stroke();
     }
-
     const hazards = track.hazards;
     for (let i = 0; i < hazards.length; i++) {
       const h = hazards[i];
-      const sx = h.x - cameraX;
-      if (sx > W + 30 || sx + h.w < -30) continue;
-      const base = q(laneBase(h.lane, layout) - queryGround(h.lane, h.x).h) + 1;
-      if (h.kind === 'debris') drawDebris(h, q(sx), base);
-      else drawFence(h, q(sx), base, layout);
+      if (h.x > cameraX + W + 40 || h.x + h.w < cameraX - 40) continue;
+      if (h.kind === 'debris') drawDebris(h, layout);
+      else drawEnergyWall(h, layout);
     }
-    strokeLaneEdges(layout);
-
-    const hints = track.hints;
-    for (let i = 0; i < hints.length; i++) {
-      const h = hints[i];
-      const sx = h.x - cameraX;
-      if (sx < -220 || sx > W + 10) continue;
-      signBoard(h.text, q(sx), q(laneBase(1, layout) - queryGround(1, h.x).h - 14), PAL.cream);
-    }
-
-    drawGate(360, 'SECTOR 9', PAL.cyan, layout);
-    drawGate(FINISH_X, 'FINISH', PAL.mag, layout);
-
-    for (let x = 5000; x < FINISH_X; x += 5000) {
-      const sx = x - cameraX;
-      if (sx < -40 || sx > W + 20) continue;
-      const X = q(sx);
-      const yTop = q(layout.horizon) - 2;
-      const yBot = q(laneBase(3, layout) + 6);
-      ctx.globalAlpha = 0.45;
-      for (let y = yTop; y < yBot; y += 3) rect(X, y, 1, 1, PAL.amber);
-      ctx.globalAlpha = 1;
-      signBoard((x / 10000).toFixed(1) + ' KM', X + 2, yTop + 1, PAL.amber);
+    ctx.font = '800 13px Nunito, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = PAL.cream;
+    ctx.strokeStyle = PAL.ink;
+    ctx.lineWidth = 3;
+    for (let i = 0; i < track.hints.length; i++) {
+      const h = track.hints[i];
+      const x = h.x - cameraX;
+      if (x < -160 || x > W) continue;
+      const y = laneBase(1, layout) - queryGround(1, h.x).h - 18;
+      ctx.strokeText(h.text, x, y);
+      ctx.fillText(h.text, x, y);
     }
   }
 
-  function drawGate(x, label, color, layout) {
-    const sx = x - cameraX;
-    if (sx < -80 || sx > W + 80) return;
-    const X = q(sx);
-    const top = q(layout.horizon - 6);
-    const bot = q(laneBase(3, layout) + 8);
-    const X2 = X + Math.max(8, q(16));
-    for (const px of [X - 1, X2 - 1]) {
-      rect(px - 1, top, 4, bot - top, PAL.wood0);
-      rect(px, top, 2, bot - top, PAL.wood2);
-      rect(px + 1, top + 2, 1, bot - top - 4, color);
-    }
-    const tw = textWidth(label);
-    const bw = tw + 8;
-    const bx = Math.round((X + X2) / 2 - bw / 2);
-    rect(bx - 3, top - 2, bw + 6, 3, PAL.wood0);
-    rect(bx - 2, top - 1, bw + 4, 1, PAL.wood3);
-    rect(bx - 1, top - 14, bw + 2, 12, PAL.ink);
-    rect(bx, top - 13, bw, 10, PAL.wood1);
-    ctx.globalAlpha = 0.3;
-    rect(bx - 2, top - 15, bw + 4, 14, color);
-    ctx.globalAlpha = 1;
-    drawText(label, bx + 4, top - 11, color, PAL.ink, false);
-    const lx0 = bx - 2;
-    const lx1 = bx + bw - 1;
-    for (const lx of [lx0, lx1]) {
-      rect(lx + 1, top + 1, 1, 2, PAL.wood0);
-      rect(lx, top + 3, 3, 4, '#e04a3a');
-      rect(lx + 1, top + 4, 1, 2, PAL.lamp);
-    }
-  }
-
-  function drawBike(x, y, pitch, scale, heat, boosting, alpha) {
-    void scale;
-    const key = (heat > 0.82 ? 'mag' : heat > 0.45 ? 'amber' : 'cyan') + ((Math.floor(time * 6) & 1));
-    const spr = bikeSprites[key];
-    const glow = heat > 0.82 ? PAL.mag : heat > 0.45 ? PAL.amber : PAL.cyan;
-    const X = q(x);
-    const Y = q(y);
-    ctx.globalAlpha = alpha * 0.3;
-    rect(X - 13, Y + 4, 30, 1, glow);
-    ctx.globalAlpha = alpha * 0.15;
-    rect(X - 10, Y + 5, 24, 1, glow);
-    ctx.globalAlpha = alpha;
-    const snap = Math.round(pitch / 0.13) * 0.13;
+  function drawBike(x, y, pitch, juice, heat, boosting, alpha) {
     ctx.save();
-    ctx.translate(X, Y);
-    if (snap) ctx.rotate(-snap);
-    const bob = Math.sin(time * 9) > 0.6 ? -1 : 0;
-    if (boosting || heat > 0.12) {
-      const len = boosting ? 5 + ((time * 40) & 3) : 2 + ((time * 30) & 1);
+    ctx.translate(x, y);
+    ctx.rotate(-pitch);
+    const s = 1.55 * (juice || 1);
+    ctx.scale(s, s);
+    ctx.globalAlpha = alpha;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    const glow = heat > 0.82 ? PAL.mag : heat > 0.45 ? PAL.amber : PAL.cyan;
+    const under = ctx.createRadialGradient(0, 8, 4, 0, 10, 48);
+    under.addColorStop(0, glow);
+    under.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = under;
+    ctx.globalAlpha = alpha * 0.65;
+    ctx.beginPath();
+    ctx.ellipse(0, 10, 46, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = PAL.ink;
+    ctx.fillStyle = '#241448';
+    ctx.beginPath();
+    ctx.ellipse(-22, 4, 16, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(24, 4, 13, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.ellipse(-22, 6, 10, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(24, 6, 8, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#3a2068';
+    ctx.beginPath();
+    ctx.moveTo(-40, 2);
+    ctx.lineTo(-18, -16);
+    ctx.lineTo(8, -18);
+    ctx.lineTo(48, -6);
+    ctx.lineTo(52, 4);
+    ctx.lineTo(20, 8);
+    ctx.lineTo(-28, 8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = PAL.amber;
+    ctx.fillRect(-6, -10, 28, 5);
+    ctx.strokeRect(-6, -10, 28, 5);
+    ctx.fillStyle = '#ffe4f4';
+    ctx.beginPath();
+    ctx.ellipse(6, -28, 16, 15, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#2a1458';
+    ctx.beginPath();
+    ctx.ellipse(12, -28, 9, 8, 0.2, -1.2, 1.2);
+    ctx.fill();
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.ellipse(14, -28, 6, 4, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = PAL.ink;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(-2, -16);
+    ctx.lineTo(2, -18);
+    ctx.stroke();
+    if (boosting || heat > 0.15) {
       ctx.fillStyle = boosting ? PAL.mag : PAL.orange;
-      ctx.fillRect(-18 - len, -4 + bob, len, 3);
-      ctx.fillStyle = PAL.lamp;
-      ctx.fillRect(-18 - Math.max(1, len - 2), -3 + bob, Math.max(1, len - 2), 1);
+      ctx.beginPath();
+      ctx.ellipse(-48, 2, boosting ? 16 : 10, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
     }
-    ctx.drawImage(spr.canvas, -spr.ox, -spr.oy + bob);
     ctx.restore();
-    ctx.globalAlpha = 1;
   }
 
   function drawActor(layout, actor, heat, boosting) {
     const lane = actor.lane;
     const laneIdx = clamp(Math.round(lane), 0, 3);
-    const sx = actor.x - cameraX;
+    const gnd = queryGround(laneIdx, actor.x).h;
     const sy = laneBase(lane, layout) - visualHeight(actor.y, layout, lane);
-    const g = queryGround(laneIdx, actor.x);
-    const shadowY = q(laneBase(laneIdx, layout) - g.h) + 2;
-    const sw = Math.max(5, Math.round(12 * (1 - Math.min(0.65, Math.max(0, actor.y - g.h) / 160))));
-    const X = q(sx);
-    ctx.globalAlpha = 0.5;
-    rect(X - sw, shadowY, sw * 2, 2, PAL.ink);
-    rect(X - sw + 2, shadowY - 1, sw * 2 - 4, 1, PAL.ink);
-    ctx.globalAlpha = 1;
+    const sx = actor.x - cameraX;
+    const shadowY = laneBase(laneIdx, layout) - gnd + 6;
+    const lift = Math.max(0, actor.y - gnd);
+    const sw = Math.max(10, 28 - lift * 0.08);
+    ctx.fillStyle = 'rgba(8,4,16,0.45)';
+    ctx.beginPath();
+    ctx.ellipse(sx, shadowY, sw, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
     if (actor.air) {
-      const Y = q(sy);
-      ctx.globalAlpha = 0.55;
-      for (let y = Y + 4; y < shadowY - 1; y += 3) rect(X, y, 1, 1, PAL.cyan);
-      ctx.globalAlpha = 1;
-      const pred = predict(actor, laneIdx);
-      if (pred) {
-        const px = q(pred.x - cameraX);
-        const py = q(laneBase(pred.lane, layout) - pred.y);
-        for (let k = 0; k <= 3; k++) {
-          rect(px - 3 + k, py - k, 1, 1, PAL.cyan);
-          rect(px + 3 - k, py - k, 1, 1, PAL.cyan);
-          rect(px - 3 + k, py + k, 1, 1, PAL.cyan);
-          rect(px + 3 - k, py + k, 1, 1, PAL.cyan);
-        }
-      }
+      ctx.setLineDash([4, 6]);
+      ctx.strokeStyle = 'rgba(94,246,255,0.7)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx, shadowY);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
     let alpha = 1;
-    if (actor.invuln > 0 && Math.sin(time * 36) > 0) alpha = 0.4;
-    if (actor.cleanFlash > 0) alpha = 1;
-    drawBike(sx, sy, actor.pitch, 1, heat, boosting, alpha);
-  }
-
-  function predict(actor, lane) {
-    let x = actor.x;
-    let y = actor.y;
-    let vy = actor.vy;
-    for (let i = 0; i < 32; i++) {
-      vy -= TUNE.gravity * 0.05;
-      y += vy * 0.05;
-      x += actor.speed * 0.05;
-      const gh = queryGround(lane, x).h;
-      if (vy < 0 && y <= gh) return { x: x, y: gh, lane: lane };
-    }
-    return null;
+    if (actor.invuln > 0 && Math.sin(time * 30) > 0) alpha = 0.45;
+    drawBike(sx, sy, actor.pitch, actor.juice || bike.juice || 1, heat, boosting, alpha);
   }
 
   function drawParticles(layout) {
     for (let i = 0; i < pool.length; i++) {
       const p = pool[i];
       if (!p.alive) continue;
-      ctx.globalAlpha = Math.max(0, p.life / p.max);
-      const sz = p.life / p.max > 0.5 ? 2 : 1;
-      rect(q(p.wx - cameraX), q(laneBase(p.lane, layout) - p.wy), sz, sz, p.color);
+      const a = Math.max(0, p.life / p.max);
+      const rad = 3 + (1 - a) * 7;
+      const x = p.wx - cameraX;
+      const y = laneBase(p.lane, layout) - p.wy;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(x, y, rad, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = PAL.ink;
+      ctx.stroke();
     }
     ctx.globalAlpha = 1;
   }
 
   function drawSpeedLines() {
     if (phase !== 'play' || bike.speed < 760) return;
-    ctx.globalAlpha = Math.min(0.5, (bike.speed - 760) / 600);
-    const y0 = q(70);
-    for (let i = 0; i < 8; i++) {
-      const y = y0 + ((i * 47 + Math.floor(cameraX / S)) % Math.max(1, (LH * 0.5) | 0));
-      rect(Math.round(LW * 0.55), y, 18 + (i % 3) * 8, 1, PAL.cream);
+    ctx.globalAlpha = Math.min(0.35, (bike.speed - 760) / 700);
+    ctx.strokeStyle = PAL.cream;
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 6; i++) {
+      const y = 80 + ((i * 37 + cameraX * 0.2) % (H * 0.45));
+      ctx.beginPath();
+      ctx.moveTo(W * 0.62, y);
+      ctx.lineTo(W * 0.62 + 30 + i * 8, y);
+      ctx.stroke();
     }
     ctx.globalAlpha = 1;
   }
 
   function render() {
     const layout = layoutMetrics();
-    if (!art || art.hy !== q(layout.horizon)) buildArt();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.imageSmoothingEnabled = false;
+    if (!art || art.hy !== layout.horizon || art.w !== W) buildArt();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.globalAlpha = 1;
-    rect(0, 0, LW, LH, PAL.night);
+    ctx.lineJoin = 'round';
+    ctx.clearRect(0, 0, W, H);
     if (shake > 0.02) {
-      const mag = Math.max(1, Math.round((shake * 8) / S));
-      ctx.translate(Math.round((Math.random() - 0.5) * mag), Math.round((Math.random() - 0.5) * mag));
+      const mag = shake * 8;
+      ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
     }
-
-    drawSky(layout);
-    drawCity(layout);
+    drawSky();
+    drawCity();
     drawLanes(layout);
-    drawShoulder(layout);
     drawDecals(layout);
-
     if (phase === 'title' || phase === 'help') {
       drawActor(layout, {
-        x: demo.x,
-        y: demo.y,
-        lane: demo.lane,
-        pitch: demo.pitch,
+        x: demo.x, y: demo.y, lane: demo.lane, pitch: demo.pitch,
         air: demo.y > queryGround(1, demo.x).h + 18,
-        vy: 0,
-        speed: 150,
-        invuln: 0,
-        cleanFlash: 0,
-      }, 0.2, false);
+        vy: 0, speed: 150, invuln: 0, juice: 1,
+      }, 0.25, false);
     } else {
       const inp = readInput();
       drawActor(layout, bike, bike.heat, inp.turbo && !bike.overheated && phase === 'play');
       drawParticles(layout);
     }
-
     drawSpeedLines();
-
     if (flash > 0) {
-      ctx.globalAlpha = Math.min(1, flash * 2.2);
-      rect(0, 0, LW, LH, '#d7e7ff');
+      ctx.globalAlpha = Math.min(0.35, flash * 2);
+      ctx.fillStyle = '#ffe4f4';
+      ctx.fillRect(0, 0, W, H);
       ctx.globalAlpha = 1;
     }
   }
+
 
   function syncHud() {
     const live = phase === 'play' || phase === 'countdown' || phase === 'pause';
@@ -1523,6 +1291,7 @@ function updateCountdown(dt) {
     bike.onPad = false;
     bike.debrisHit = null;
     bike.cleanFlash = 0;
+    bike.juice = 1;
     raceTime = 0;
     crashes = 0;
     cleans = 0;
@@ -1846,14 +1615,10 @@ function updateCountdown(dt) {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     W = Math.max(320, window.innerWidth);
     H = Math.max(240, window.innerHeight);
-    S = clamp(Math.round(W / 420), 2, 4);
-    LW = Math.ceil(W / S);
-    LH = Math.ceil(H / S);
-    canvas.width = LW;
-    canvas.height = LH;
-    canvas.style.width = (LW * S) + 'px';
-    canvas.style.height = (LH * S) + 'px';
-    ctx.imageSmoothingEnabled = false;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
     if (art) buildArt();
     portrait = window.matchMedia('(orientation: portrait)').matches || H > W;
   }

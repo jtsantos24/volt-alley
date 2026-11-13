@@ -1,6 +1,6 @@
 # VOLT ALLEY
 
-A gritty cyberpunk hover-bike lane racer. One rain-soaked circuit, four lanes, a core that overheats, and landings that cost you time if the nose is wrong.
+A cartoon neon-dusk hover-bike lane racer. Four lanes, a hot core, and landings that care about your nose angle.
 
 Milestone 1 is about the bike: momentum, air, and whether a clean landing feels better than a crash. It is a static site with no build step and no network calls after the first load.
 
@@ -38,7 +38,9 @@ The clock is a single run down Sector 9. Your best time is stored on the phone (
 | `index.html` | Page, HUD, screens, iOS meta tags |
 | `css/game.css` | Layout, safe areas, scanlines |
 | `js/game.js` | Track, physics, drawing, input |
-| `js/audio.js` | Procedural engine, rain, and music |
+| `js/audio.js` | Procedural engine and synth score |
+| `fonts/nunito-latin-800.woff2` | Bundled Nunito ExtraBold (SIL OFL) |
+| `fonts/Nunito-OFL.txt` | Nunito license |
 | `sw.js` | Cache-first service worker |
 | `manifest.json` | Home-screen install |
 | `icons/icon-180.png` | Apple touch icon |
@@ -49,4 +51,4 @@ Graphics are drawn on the canvas. Audio is Web Audio oscillators and noise. Noth
 
 ## Updating an installed copy
 
-The service worker is cache-first under the name `volt-alley-v5` in `sw.js`. When you change the game, bump that name. The next online launch activates the new worker and reloads. The title shows **UPDATED**, then **OFFLINE READY**. A race that is already running is left alone until the next launch.
+The service worker is cache-first under the name `volt-alley-v7` in `sw.js`. When you change the game, bump that name and add any new file to the precache list. The next online launch activates the new worker and reloads. The title shows **UPDATED**, then **OFFLINE READY**. A race that is already running is left alone until the next launch.
