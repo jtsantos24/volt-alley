@@ -1,6 +1,6 @@
 # VOLT ALLEY
 
-A storm-lit futuristic hill race. One continuous line, a hot core, and landings that pay time back when you stick a trick.
+A storm-lit futuristic hill race with five short maps. One line, a hot core, and landings that pay time back when you stick a trick.
 
 It is a static site with no build step and no network calls after the first load.
 
@@ -32,7 +32,17 @@ Then open [http://127.0.0.1:8741](http://127.0.0.1:8741) and turn the window sid
 - **Gates** — low barriers and glowing beams have to be jumped. Rocks on the ground scrape speed.
 - **Keyboard** — `D`, Right, or Space gas. `S` brake. Shift boost. `A`, Left, or Up leans back. `Q` or Down leans forward. `P` pauses.
 
-The clock is a single run to the Sector 9 gate. Your best time and coin total are stored on the phone (`localStorage`).
+Pick a map from the title screen. Nite Pier is open first. Finishing a map unlocks the next. Ash Veil also opens early if you hold 9 stars.
+
+Each map has its own best time, 3-star target, and a best-time ghost. A crash sends you back to the last checkpoint and the clock keeps running. Coins on the high line are optional. Times, stars, ghosts, and the coin bank stay in `localStorage`.
+
+| Map | Tier | Accent |
+| --- | --- | --- |
+| Nite Pier | Novice | Cyan |
+| Amp Spine | Intermediate | Magenta |
+| Static Cut | Advanced | Amber |
+| Void Well | Expert | Violet ring, with a slow trench if you arrive cold |
+| Ash Veil | Master | Ember |
 
 ## Files
 
@@ -40,13 +50,14 @@ The clock is a single run to the Sector 9 gate. Your best time and coin total ar
 | --- | --- |
 | `index.html` | Page, HUD, screens, iOS meta tags |
 | `css/game.css` | Layout, safe areas, controls |
-| `js/game.js` | Terrain, physics, drawing, input |
+| `js/maps.js` | Five authored maps and the segment compiler |
+| `js/game.js` | Physics, drawing, input, records |
 | `js/audio.js` | Procedural engine and synth score |
 | `fonts/nunito-latin-800.woff2` | Bundled Nunito ExtraBold (SIL OFL) |
 | `fonts/Nunito-OFL.txt` | Nunito license |
 | `fonts/jersey10-latin.woff2` | Earlier UI font, still shipped |
 | `fonts/OFL.txt` | Jersey 10 license |
-| `sw.js` | Cache-first service worker (`volt-alley-v9`) |
+| `sw.js` | Cache-first service worker (`volt-alley-v10`) |
 | `manifest.json` | Home-screen install |
 | `icons/icon-180.png` | Apple touch icon |
 | `icons/icon-192.png` | Manifest icon |
@@ -56,4 +67,4 @@ Graphics are drawn on the canvas. Audio is Web Audio. Nothing is loaded from a C
 
 ## Updating an installed copy
 
-The service worker is cache-first under the name `volt-alley-v9` in `sw.js`. When you change the game, bump that name and add any new file to the precache list. The next online launch activates the new worker and reloads. The title shows **UPDATED**, then **OFFLINE READY**. A race that is already running is left alone until the next launch.
+The service worker is cache-first under the name `volt-alley-v10` in `sw.js`. When you change the game, bump that name and add any new file to the precache list. The next online launch activates the new worker and reloads. The title shows **UPDATED**, then **OFFLINE READY**. A race that is already running is left alone until the next launch.

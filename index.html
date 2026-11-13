@@ -26,6 +26,7 @@
 
     <div id="hud" class="hidden">
       <div id="place" aria-live="polite">4TH</div>
+      <div id="map-name">NITE PIER</div>
       <div id="racebar" aria-hidden="true">
         <i id="mark-you" class="mark you"></i>
         <i id="mark-nyx" class="mark"></i>
@@ -77,7 +78,7 @@
         <p id="title-best" class="bestline">BEST --:--.--</p>
         <p id="title-coins" class="bestline">COINS 0</p>
         <div class="row">
-          <button id="btn-ride" class="primary" type="button">RIDE</button>
+          <button id="btn-ride" class="primary" type="button">MAPS</button>
           <button id="btn-howto" class="ghost" type="button">HOW TO RIDE</button>
         </div>
         <p id="offline-badge" class="badge">CACHING…</p>
@@ -100,7 +101,7 @@
           <p><b>TRICKS</b> A clean flip takes 0.5s off the clock per rotation, plus 0.5s for a multi-flip and 0.5s more for big air, and you get a short speed boost. A crash pays nothing.</p>
           <p><b>RIVALS</b> NYX, VEX, and ION ride the same line. The badge is your place. The bar shows the pack. The number on the right is meters to the next marker.</p>
           <p><b>COINS</b> Grab the glowing chips on the line. The count stays on this phone.</p>
-          <p><b>GATES</b> Jump the low barriers and the glowing beams. Rocks scrape your speed if you stay on the ground. A bad landing costs 3 seconds.</p>
+          <p><b>GATES</b> Jump the low barriers and the glowing beams. A crash sends you back to the last checkpoint. The clock keeps running.</p>
           <p class="keys">Keys: D, Right, or Space gas. S brake. Shift boost. A, Left, or Up lean back. Q or Down lean forward. P pause.</p>
         </div>
       </div>
@@ -134,9 +135,29 @@
           <div><dt>CLEAN</dt><dd id="result-cleans">0</dd></div>
           <div><dt>TOP</dt><dd><span id="result-top">0</span> KM/H</dd></div>
         </dl>
+        <p id="result-stars" class="tag"></p>
         <div class="row">
           <button id="btn-retry" class="primary" type="button">RIDE AGAIN</button>
+          <button id="btn-next-map" class="primary hidden" type="button">NEXT MAP</button>
+          <button id="btn-result-maps" class="ghost" type="button">MAPS</button>
           <button id="btn-result-title" class="ghost" type="button">TITLE</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="overlay-maps" class="overlay hidden">
+      <div class="maps-sheet">
+        <div class="maps-head">
+          <h2>MAPS</h2>
+          <p id="maps-stars" class="bestline">0/15</p>
+          <p id="maps-coins" class="bestline">0</p>
+          <p id="maps-shells" class="bestline">SHELLS 0/5</p>
+          <button id="btn-maps-back" class="ghost" type="button">BACK</button>
+        </div>
+        <div id="map-row" class="map-row"></div>
+        <div class="row">
+          <button id="btn-map-race" class="primary" type="button">RACE</button>
+          <button id="btn-map-ghost" class="ghost" type="button">GHOST ON</button>
         </div>
       </div>
     </section>
@@ -152,6 +173,7 @@
     <p id="boot-error" hidden></p>
   </div>
   <noscript><p style="color:#f7e6c4;font-family:monospace;padding:16px">VOLT ALLEY needs JavaScript.</p></noscript>
+  <script src="js/maps.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/game.js"></script>
 </body>

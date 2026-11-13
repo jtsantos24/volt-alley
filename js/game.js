@@ -8,7 +8,8 @@
   const HELP_KEY = 'volt-alley-help';
   const COIN_KEY = 'volt-alley-coins';
   const MARK_GAP = 1400;
-  const FINISH_X = 49200;
+  let finishX = 21600;
+  let currentMap = null;
   const STEP = 1 / 120;
   const SIGNS = ['NOODLE', 'WETWARE', '24H', 'KILO', 'STATIC', 'ASH CO', 'BYTE', 'RAIN', 'VOLT', 'LOW', 'GRID', 'NITE', 'AMP', 'RADIO', 'SODA'];
 
@@ -70,6 +71,12 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').match
   let best = null;
   let coinBank = 0;
   let runCoins = 0;
+  let mapProgress = {};
+  let ghostRec = [];
+  let ghostAcc = 0;
+  let ghostRun = null;
+  let ghostOn = true;
+  let selectedMapId = 'nite-pier';
   let portrait = false;
 
   let laneTarget = 1;
@@ -172,69 +179,11 @@ let raceTime = 0;
     try { localStorage.setItem(key, String(value)); } catch (err) { /* private mode */ }
   }
 
-function buildTrack() {
-    const keys = [{ x: 0, h: 42 }, { x: 1280, h: 46 }];
-    const hazards = [];
-    const pads = [];
-    const hints = [
-      { x: 980, text: 'EASE IN' },
-      { x: FINISH_X - 900, text: 'SECTOR GATE' },
-    ];
-    const rand = mulberry32(77);
-    let x = 1280;
-    let piece = 0;
-    while (x < FINISH_X - 400) {
-      const roll = piece % 6;
-      if (roll === 0 || roll === 2) {
-        x += 560 + rand() * 260;
-        keys.push({ x: x, h: 24 + rand() * 78 });
-      } else if (roll === 1) {
-        x += 420 + rand() * 140;
-        keys.push({ x: x, h: 10 + rand() * 16 });
-        if (rand() > 0.55) hazards.push({ kind: 'debris', x: x - 80, w: 86, clear: 18 });
-      } else if (roll === 3 || roll === 5) {
-        const base = 16 + rand() * 18;
-        x += 180;
-        keys.push({ x: x, h: base });
-        const rise = 250 + rand() * 70;
-        const peak = base + 108 + rand() * 46;
-        x += rise;
-        keys.push({ x: x, h: peak, ramp: true, pow: 1.7 });
-        const valley = 8 + rand() * 12;
-        x += 300 + rand() * 180;
-        keys.push({ x: x, h: valley });
-        if (rand() > 0.4) hazards.push({ kind: 'bar', x: x - 36, w: 34, clear: 52 });
-        if (piece === 3) hints.push({ x: x - rise - 220, text: 'SEND IT' });
-      } else {
-        x += 160;
-        keys.push({ x: x, h: 36 });
-        x += 210;
-        keys.push({ x: x, h: 108, ramp: true, pow: 1.55 });
-        x += 260;
-        keys.push({ x: x, h: 22 });
-        hazards.push({ kind: 'gate', x: x - 90, w: 22, clear: 78 });
-        if (piece === 4) hints.push({ x: x - 460, text: 'JUMP THE GATE' });
-        x += 200;
-        keys.push({ x: x, h: 24 });
-        pads.push({ x: x, len: 460 });
-        if (pads.length === 1) hints.push({ x: x + 40, text: 'HEAT DUMP' });
-        x += 460;
-        keys.push({ x: x, h: 30 });
-      }
-      piece += 1;
-    }
-    keys.push({ x: FINISH_X - 200, h: 36 });
-    keys.push({ x: FINISH_X + 900, h: 36 });
-    keys.sort((a, b) => a.x - b.x);
-    for (let i = 1; i < keys.length; i++) {
-      if (keys[i].x <= keys[i - 1].x) keys[i].x = keys[i - 1].x + 8;
-    }
-    hazards.sort((a, b) => a.x - b.x);
-    const coins = [];
-    for (let cx = 1600; cx < FINISH_X - 700; cx += 690) {
-      coins.push({ x: cx, lift: coins.length % 4 === 3 ? 108 : 34, got: false });
-    }
-    return { keys: keys, hazards: hazards, pads: pads, hints: hints, coins: coins };
+function buildTrack(mapId) {
+    const built = window.VoltMaps.compile(mapId || (currentMap && currentMap.id) || 'nite-pier');
+    finishX = built.finishX;
+    currentMap = built;
+    return built;
   }
 
   function queryGround(x) {
@@ -323,39 +272,203 @@ function buildTrack() {
     audio.jump();
   }
 
-  function startCrash(pastX) {
-    if (bike.crashing) return;
+  function startCrash() {
+    if (bike.crashing || bike.invuln > 0) return;
     bike.crashing = true;
     bike.crashT = 0;
-    bike.pastX = clamp(pastX, 240, FINISH_X - 120);
-    bike.speed *= 0.25;
+    bike.looping = null;
     shake = 1;
     crashes += 1;
-    raceTime += TUNE.penalty;
-    penaltyFlash = 0.9;
     audio.crash();
     burst(bike.x, bike.y, '#ff2bd6', 14, 0.5);
-    toast('+3.0s', 'bad');
+    toast('FAULT', 'bad');
+  }
+
+  function checkpointBehind() {
+    const list = (track && track.checkpoints) || [0];
+    let cp = 0;
+    for (let i = 0; i < list.length; i++) {
+      if (list[i] <= bike.x - 24) cp = list[i];
+    }
+    return cp;
   }
 
   function respawn() {
     bike.crashing = false;
-    bike.x = bike.pastX;
+    bike.looping = null;
+    const cp = checkpointBehind();
+    bike.x = Math.max(90, cp + 40);
     bike.prevX = bike.x;
     const g = queryGround(bike.x);
     bike.y = g.h;
     bike.vy = 0;
     bike.air = false;
     bike.pitch = Math.atan(clamp(g.slope, -1.2, 1.2));
-    bike.speed = 280;
+    bike.speed = 420;
     bike.prevH = g.h;
     bike.prevSlope = g.slope;
     bike.airTime = 0;
-    bike.invuln = 1.15;
+    bike.invuln = 0.8;
     bike.debrisHit = null;
     bike.flips = 0;
     cameraX = bike.x - W * 0.32;
     cameraY = g.h;
+  }
+
+  function loopPose(loop, u) {
+    const span = loop.a0 - loop.a1;
+    const a = loop.a0 - span * u;
+    const x = loop.cx + Math.cos(a) * loop.r;
+    const y = loop.cy + Math.sin(a) * loop.r;
+    const pitch = a - Math.PI * 0.5;
+    return { x: x, y: y, pitch: pitch };
+  }
+
+  function tryEnterLoop(inp) {
+    if (bike.looping || bike.air || !track || !track.loops) return;
+    for (let i = 0; i < track.loops.length; i++) {
+      const loop = track.loops[i];
+      if (bike.loopSkip === loop) continue;
+      if (bike.prevX < loop.entry && bike.x >= loop.entry) {
+        if (bike.speed >= loop.entryMin && inp.throttle && !inp.brake) {
+          bike.looping = loop;
+          bike.loopU = 0;
+          audio.jump();
+        } else {
+          bike.loopSkip = loop;
+        }
+      }
+    }
+  }
+
+  function advanceLoop(dt) {
+    if (bike.speed < 360) bike.speed = 360;
+    const loop = bike.looping;
+    const span = loop.a0 - loop.a1;
+    const arc = Math.max(80, loop.r * span);
+    bike.loopU += (bike.speed * dt) / arc;
+    if (bike.loopU >= 1) {
+      bike.looping = null;
+      bike.loopSkip = loop;
+      bike.x = loop.exit + 24;
+      bike.prevX = bike.x;
+      const g = queryGround(bike.x);
+      bike.y = g.h + 36;
+      bike.air = true;
+      bike.vy = 90;
+      bike.pitch = 0.12;
+      bike.takeoffPitch = bike.pitch;
+      bike.flips = 0;
+      bike.airTime = 0.08;
+      bike.prevH = g.h;
+      bike.prevSlope = g.slope;
+      return;
+    }
+    const pose = loopPose(loop, bike.loopU);
+    bike.prevX = bike.x;
+    bike.x = pose.x;
+    bike.y = pose.y;
+    bike.pitch = pose.pitch;
+    bike.air = false;
+    bike.vy = 0;
+  }
+
+  function recordGhost(dt) {
+    if (phase !== 'play') return;
+    ghostAcc += dt || 0;
+    if (ghostAcc < 0.05) return;
+    ghostAcc = 0;
+    if (ghostRec.length >= 2000) return;
+    ghostRec.push({ t: Math.round(raceTime * 100) / 100, x: Math.round(bike.x), y: Math.round(bike.y), p: Math.round(bike.pitch * 100) / 100 });
+  }
+
+  function ghostPose(t) {
+    const g = ghostRun;
+    if (!g || g.length < 2) return null;
+    if (t <= g[0].t) return g[0];
+    if (t >= g[g.length - 1].t) return null;
+    let lo = 0;
+    let hi = g.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (g[mid].t <= t) lo = mid;
+      else hi = mid;
+    }
+    const a = g[lo];
+    const b = g[hi];
+    const u = (t - a.t) / Math.max(0.001, b.t - a.t);
+    return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, p: a.p + (b.p - a.p) * u };
+  }
+
+  function loadMapProgress() {
+    try {
+      mapProgress = JSON.parse(localStorage.getItem('volt-alley-maps') || '{}') || {};
+    } catch (err) {
+      mapProgress = {};
+    }
+    try { ghostOn = localStorage.getItem('volt-alley-ghost') !== '0'; } catch (err) { ghostOn = true; }
+  }
+
+  function saveMapProgress() {
+    try { localStorage.setItem('volt-alley-maps', JSON.stringify(mapProgress)); } catch (err) { /* private */ }
+  }
+
+  function mapRecord(id) {
+    return mapProgress[id] || { best: null, stars: 0, clean: false, circuit: false };
+  }
+
+  function totalStars() {
+    const list = window.VoltMaps.list;
+    let n = 0;
+    for (let i = 0; i < list.length; i++) n += mapRecord(list[i].id).stars || 0;
+    return n;
+  }
+
+  function mapUnlocked(meta, index) {
+    if (index === 0) return true;
+    const prev = window.VoltMaps.list[index - 1];
+    if ((mapRecord(prev.id).stars || 0) >= 1) return true;
+    if (meta.id === 'ash-veil' && totalStars() >= 9) return true;
+    return false;
+  }
+
+  function placeRivals() {
+    const target = (currentMap && currentMap.star2) || 60;
+    const base = finishX / Math.max(36, target);
+    rivals[0].pace = base * 1.04;
+    rivals[1].pace = base * 0.94;
+    rivals[2].pace = base * 0.84;
+    rivals[0].x = 980;
+    rivals[1].x = 680;
+    rivals[2].x = 400;
+    rivals[0].doneAt = null;
+    rivals[1].doneAt = null;
+    rivals[2].doneAt = null;
+  }
+
+  function loadGhost(id) {
+    ghostRun = null;
+    if (!ghostOn) return;
+    try {
+      const raw = localStorage.getItem('volt-alley-ghost-' + id);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (data && data.length > 1) ghostRun = data;
+    } catch (err) { ghostRun = null; }
+  }
+
+  function hitCeiling() {
+    if (bike.invuln > 0 || !track || !track.ceilings) return;
+    const top = bike.y + 44;
+    for (let i = 0; i < track.ceilings.length; i++) {
+      const c = track.ceilings[i];
+      if (bike.x < c.x || bike.x > c.x + c.w) continue;
+      const limit = queryGround(bike.x).h + c.clear;
+      if (top > limit) {
+        startCrash();
+        return;
+      }
+    }
   }
 
   function trickSave(flips, airTime) {
@@ -499,15 +612,15 @@ function buildTrack() {
       if (r.doneAt != null) continue;
       const wobble = 0.9 + 0.1 * Math.sin(time * 0.85 + r.phase);
       r.x += r.pace * wobble * dt;
-      if (r.x >= FINISH_X) {
-        r.x = FINISH_X;
+      if (r.x >= finishX) {
+        r.x = finishX;
         r.doneAt = raceTime;
       }
     }
   }
 
   function standings() {
-    const rows = [{ id: 'you', x: bike.x, done: bike.x >= FINISH_X ? raceTime : Infinity }];
+    const rows = [{ id: 'you', x: bike.x, done: bike.x >= finishX ? raceTime : Infinity }];
     for (let i = 0; i < rivals.length; i++) {
       const r = rivals[i];
       rows.push({ id: r.name, x: r.x, done: r.doneAt == null ? Infinity : r.doneAt });
@@ -592,8 +705,21 @@ function buildTrack() {
 
     raceTime += dt;
     bike.prevX = bike.x;
-    bike.x += bike.speed * dt;
-    if (bike.x < 80) bike.x = 80;
+    if (bike.looping) {
+      advanceLoop(dt);
+      if (bike.looping) {
+        recordGhost(dt);
+        return;
+      }
+    } else {
+      bike.x += bike.speed * dt;
+      if (bike.x < 80) bike.x = 80;
+      tryEnterLoop(inp);
+      if (bike.looping) {
+        recordGhost(dt);
+        return;
+      }
+    }
 
     if (bike.air) {
       if (inp.leanFwd && !inp.leanBack) bike.pitch -= TUNE.leanRate * dt;
@@ -628,6 +754,7 @@ function buildTrack() {
       }
     }
 
+    hitCeiling();
     if (bike.invuln > 0) bike.invuln -= dt;
     if (bike.cleanFlash > 0) bike.cleanFlash -= dt;
     if (bike.juice > 1) bike.juice += (1 - bike.juice) * Math.min(1, dt * 8);
@@ -670,7 +797,9 @@ function buildTrack() {
     }
 
     if (!bike.crashing) collectCoins();
-    if (!bike.crashing && bike.x >= FINISH_X) finishRace();
+    if (bike.loopSkip && bike.x > bike.loopSkip.exit + 80) bike.loopSkip = null;
+    recordGhost(dt);
+    if (!bike.crashing && bike.x >= finishX) finishRace();
   }
 
 function updateCountdown(dt) {
@@ -1052,7 +1181,7 @@ function buildSky(hy) {
     ctx.lineJoin = 'round';
     ctx.stroke();
     ctx.lineWidth = 4;
-    ctx.strokeStyle = bolt > 0.35 ? '#f4fbff' : PAL.cyan;
+    ctx.strokeStyle = bolt > 0.35 ? '#f4fbff' : ((track && track.accent) || PAL.cyan);
     ctx.stroke();
     ctx.lineWidth = 1.6;
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
@@ -1148,10 +1277,10 @@ function buildSky(hy) {
       ctx.strokeStyle = PAL.cyan;
       ctx.stroke();
     }
-    if (FINISH_X < cameraX + W + 40 && FINISH_X > cameraX - 40) {
-      const g = queryGround(FINISH_X);
-      const foot = toScreen(FINISH_X, g.h);
-      const cap = toScreen(FINISH_X, g.h + 78);
+    if (finishX < cameraX + W + 40 && finishX > cameraX - 40) {
+      const g = queryGround(finishX);
+      const foot = toScreen(finishX, g.h);
+      const cap = toScreen(finishX, g.h + 78);
       roundPath(foot.x - 8, cap.y, 12, foot.y - cap.y, 4);
       paint(PAL.cyan, 3);
       roundPath(foot.x + 36, cap.y, 12, foot.y - cap.y, 4);
@@ -1333,7 +1462,7 @@ function buildSky(hy) {
     ctx.beginPath();
     ctx.ellipse(shadow.x, shadow.y + 3, Math.max(8, 22 * sc - liftPx * 0.06), 4, 0, 0, Math.PI * 2);
     ctx.fill();
-    let alpha = 1;
+    let alpha = actor.alpha == null ? 1 : actor.alpha;
     if (actor.invuln > 0 && Math.sin(time * 30) > 0) alpha = 0.45;
     const spin = (actor.x || 0) * 0.08;
     paintGlow = actor.glow || null;
@@ -1427,7 +1556,7 @@ function buildSky(hy) {
     if (!track) return;
     const span0 = Math.floor((cameraX - 40) / MARK_GAP) * MARK_GAP;
     for (let x = span0; x < cameraX + W + 80; x += MARK_GAP) {
-      if (x < 400 || x > FINISH_X) continue;
+      if (x < 400 || x > finishX) continue;
       const g = queryGround(x);
       const foot = toScreen(x, g.h);
       const cap = toScreen(x, g.h + 28);
@@ -1436,7 +1565,47 @@ function buildSky(hy) {
       ctx.fillStyle = PAL.lamp;
       ctx.fillRect(foot.x - 7, cap.y - 8, 14, 10);
     }
-    if (240 > cameraX - 80 && 320 < cameraX + W + 80) drawArch(240);
+    if (200 > cameraX - 120 && 280 < cameraX + W) drawArch(200);
+    const cps = track.checkpoints || [];
+    for (let i = 0; i < cps.length; i++) {
+      if (cps[i] < cameraX - 40 || cps[i] > cameraX + W + 40) continue;
+      const g = queryGround(cps[i]);
+      const foot = toScreen(cps[i], g.h);
+      const top = toScreen(cps[i], g.h + 64);
+      ctx.strokeStyle = (track && track.accent) || PAL.cyan;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(foot.x, foot.y);
+      ctx.lineTo(foot.x, top.y);
+      ctx.stroke();
+      ctx.fillStyle = (track && track.accent) || PAL.cyan;
+      ctx.fillRect(foot.x - 7, top.y, 14, 5);
+    }
+    const ceilings = track.ceilings || [];
+    for (let i = 0; i < ceilings.length; i++) {
+      const c = ceilings[i];
+      if (c.x + c.w < cameraX || c.x > cameraX + W) continue;
+      const a = toScreen(c.x, queryGround(c.x).h + c.clear);
+      const b = toScreen(c.x + c.w, queryGround(c.x + c.w).h + c.clear);
+      ctx.fillStyle = '#120818';
+      ctx.fillRect(Math.min(a.x, b.x), a.y - 12, Math.abs(b.x - a.x), 14);
+      ctx.fillStyle = (track && track.accent) || PAL.mag;
+      ctx.fillRect(Math.min(a.x, b.x), a.y - 5, Math.abs(b.x - a.x), 4);
+    }
+    const loops = track.loops || [];
+    for (let i = 0; i < loops.length; i++) {
+      const loop = loops[i];
+      ctx.beginPath();
+      for (let s = 0; s <= 32; s++) {
+        const pose = loopPose(loop, s / 32);
+        const p = toScreen(pose.x, pose.y);
+        if (s === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.strokeStyle = (track && track.accent) || '#b08cff';
+      ctx.lineWidth = 7;
+      ctx.stroke();
+    }
     const coins = track.coins || [];
     for (let i = 0; i < coins.length; i++) {
       const c = coins[i];
@@ -1508,6 +1677,12 @@ function buildSky(hy) {
       drawActor(demo, 0.2, false);
     } else {
       drawRivals();
+      if (ghostOn && phase === 'play') {
+        const pose = ghostPose(raceTime);
+        if (pose) {
+          drawActor({ x: pose.x, y: pose.y, pitch: pose.p, scale: 1, glow: '#d5e8ff', alpha: 0.38, juice: 1, invuln: 0 }, 0, false);
+        }
+      }
       const inp = readInput();
       drawActor(bike, bike.heat, inp.turbo && !bike.overheated && phase === 'play');
       drawParticles();
@@ -1528,6 +1703,7 @@ function buildSky(hy) {
     $('time-val').classList.toggle('penalty', penaltyFlash > 0);
     $('time-val').classList.toggle('saved', rewardFlash > 0);
     setText($('coin-val'), String(coinBank));
+    setText($('map-name'), currentMap ? currentMap.name : '');
     const shown = phase === 'countdown' ? Math.round(rev * 420) : bike.speed;
     const speedK = kmh(shown);
     setText($('speed-val'), String(speedK));
@@ -1548,12 +1724,12 @@ function buildSky(hy) {
     setText(placeEl, ordinal(place));
     placeEl.classList.toggle('lead', place === 1);
     placeEl.classList.toggle('mid', place === 2 || place === 3);
-    const mark = (id, x) => { $(id).style.left = (clamp(x / FINISH_X, 0, 1) * 100).toFixed(2) + '%'; };
+    const mark = (id, x) => { $(id).style.left = (clamp(x / finishX, 0, 1) * 100).toFixed(2) + '%'; };
     mark('mark-you', bike.x);
     mark('mark-nyx', rivals[0].x);
     mark('mark-vex', rivals[1].x);
     mark('mark-ion', rivals[2].x);
-    const post = Math.min(FINISH_X, Math.ceil((bike.x + 8) / MARK_GAP) * MARK_GAP);
+    const post = Math.min(finishX, Math.ceil((bike.x + 8) / MARK_GAP) * MARK_GAP);
     setText($('gap-val'), Math.max(0, Math.round((post - bike.x) / 12)) + ' M');
     const nose = wrapAngle(bike.pitch);
     const deg = (-nose * 180 / Math.PI).toFixed(2);
@@ -1571,7 +1747,7 @@ function buildSky(hy) {
   }
 
   function showOnly(name) {
-    const ids = ['title', 'help', 'pause', 'results'];
+    const ids = ['title', 'help', 'pause', 'results', 'maps'];
     for (let i = 0; i < ids.length; i++) {
       $('overlay-' + ids[i]).classList.toggle('hidden', ids[i] !== name);
     }
@@ -1632,9 +1808,12 @@ function buildSky(hy) {
     cameraY = g.h;
     trail.length = 0;
     runCoins = 0;
-    rivals[0].x = 1100; rivals[0].doneAt = null;
-    rivals[1].x = 760; rivals[1].doneAt = null;
-    rivals[2].x = 340; rivals[2].doneAt = null;
+    ghostRec = [];
+    ghostAcc = 0;
+    bike.looping = null;
+    bike.loopSkip = null;
+    bike.loopU = 0;
+    placeRivals();
     if (track && track.coins) {
       for (let i = 0; i < track.coins.length; i++) track.coins[i].got = false;
     }
@@ -1667,14 +1846,29 @@ function buildSky(hy) {
   function finishRace() {
     if (phase === 'results') return;
     phase = 'results';
-    const record = best == null || raceTime < best;
-    if (record) {
-      best = raceTime;
-      saveNum(BEST_KEY, best);
+    const id = currentMap ? currentMap.id : 'nite-pier';
+    const prev = mapRecord(id);
+    const record = prev.best == null || raceTime < prev.best;
+    let stars = 1;
+    if (currentMap && raceTime <= currentMap.star2) stars = 2;
+    if (currentMap && raceTime <= currentMap.star3) stars = 3;
+    const coinTotal = (track.coins || []).length;
+    const allCoins = coinTotal > 0 && runCoins >= coinTotal;
+    mapProgress[id] = {
+      best: record ? raceTime : prev.best,
+      stars: Math.max(prev.stars || 0, stars),
+      clean: prev.clean || crashes === 0,
+      circuit: prev.circuit || allCoins,
+    };
+    saveMapProgress();
+    if (record && ghostRec.length > 1) {
+      try { localStorage.setItem('volt-alley-ghost-' + id, JSON.stringify(ghostRec)); } catch (err) { /* full */ }
     }
-    setText($('result-kicker'), record ? 'NEW RECORD' : 'SECTOR CLEAR');
+    best = mapProgress[id].best;
+    setText($('result-kicker'), record ? 'NEW RECORD' : (stars >= 3 ? '3 STARS' : 'SECTOR CLEAR'));
     setText($('result-time'), fmt(raceTime));
     setText($('result-best'), fmt(best));
+    setText($('result-stars'), stars + ' STAR' + (stars > 1 ? 'S' : '') + (allCoins ? ' · CIRCUIT' : '') + (crashes === 0 ? ' · CLEAN' : ''));
     setText($('result-faults'), String(crashes));
     setText($('result-cleans'), String(cleans));
     setText($('result-top'), String(kmh(topSpeed)));
@@ -1685,6 +1879,12 @@ function buildSky(hy) {
     setText($('result-coins'), String(coinBank));
     setText($('title-coins'), 'COINS ' + coinBank);
     setText($('title-best'), 'BEST ' + fmt(best));
+    const list = window.VoltMaps.list;
+    let idx = 0;
+    for (let i = 0; i < list.length; i++) if (list[i].id === id) idx = i;
+    const next = list[idx + 1];
+    const nextBtn = $('btn-next-map');
+    if (nextBtn) nextBtn.classList.toggle('hidden', !(next && mapUnlocked(next, idx + 1)));
     showOnly('results');
     hideCountdown();
     applyChrome();
@@ -1693,7 +1893,7 @@ function buildSky(hy) {
 
   function openHelp(back) {
     helpBack = back;
-    setText($('btn-help-ride'), back === 'pause' ? 'BACK' : 'RIDE');
+    setText($('btn-help-ride'), back === 'pause' ? 'BACK' : 'MAPS');
     showOnly('help');
     if (back !== 'pause') phase = 'help';
     applyChrome();
@@ -1719,14 +1919,62 @@ function buildSky(hy) {
     }
     seenHelp = true;
     try { localStorage.setItem(HELP_KEY, '1'); } catch (err) { /* ignore */ }
-    startCountdown();
+    openMaps();
   }
 
   function onRide() {
     unlockAudio();
     uiBlip();
     if (!seenHelp) openHelp('start');
-    else startCountdown();
+    else openMaps();
+  }
+
+  function starGlyph(n) {
+    return (n >= 1 ? '★' : '☆') + (n >= 2 ? '★' : '☆') + (n >= 3 ? '★' : '☆');
+  }
+
+  function renderMapCards() {
+    const row = $('map-row');
+    if (!row || !window.VoltMaps) return;
+    const list = window.VoltMaps.list;
+    let html = '';
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      const open = mapUnlocked(m, i);
+      const rec = mapRecord(m.id);
+      const sel = m.id === selectedMapId ? ' selected' : '';
+      html += '<button type="button" class="map-card' + (open ? '' : ' locked') + sel + '" data-id="' + m.id + '"' + (open ? '' : ' disabled') + '>';
+      html += '<i style="background:' + m.accent + '"></i>';
+      html += '<b>' + m.name + '</b>';
+      html += '<small>' + m.tier + '</small>';
+      if (!open) html += '<em>FINISH ' + String(m.unlock || '').replace(/-/g, ' ').toUpperCase() + '</em>';
+      else html += '<em>' + (rec.best == null ? 'NO TIME' : fmt(rec.best)) + '</em><span>' + starGlyph(rec.stars || 0) + '</span>';
+      html += '</button>';
+    }
+    row.innerHTML = html;
+    setText($('maps-stars'), totalStars() + '/15');
+    setText($('maps-coins'), String(coinBank));
+    setText($('btn-map-ghost'), ghostOn ? 'GHOST ON' : 'GHOST OFF');
+    const shells = totalStars() >= 15 ? 5 : totalStars() >= 12 ? 4 : totalStars() >= 9 ? 3 : totalStars() >= 6 ? 2 : totalStars() >= 3 ? 1 : 0;
+    setText($('maps-shells'), 'SHELLS ' + shells + '/5');
+  }
+
+  function openMaps() {
+    phase = 'maps';
+    renderMapCards();
+    showOnly('maps');
+    applyChrome();
+  }
+
+  function startSelectedMap() {
+    const list = window.VoltMaps.list;
+    let index = 0;
+    for (let i = 0; i < list.length; i++) if (list[i].id === selectedMapId) index = i;
+    if (!mapUnlocked(list[index], index)) return;
+    track = buildTrack(selectedMapId);
+    loadGhost(selectedMapId);
+    setText($('map-name'), currentMap ? currentMap.name : '');
+    startCountdown();
   }
 
   let pausedFrom = 'play';
@@ -1876,6 +2124,35 @@ function buildSky(hy) {
     bindHold($('btn-lean-fwd'), 'leanFwd');
 
     bindPress($('btn-ride'), onRide);
+    bindPress($('btn-maps-back'), () => { uiBlip(); toTitle(); });
+    bindPress($('btn-map-race'), () => { unlockAudio(); uiBlip(); startSelectedMap(); });
+    bindPress($('btn-map-ghost'), () => {
+      ghostOn = !ghostOn;
+      try { localStorage.setItem('volt-alley-ghost', ghostOn ? '1' : '0'); } catch (err) { /* ignore */ }
+      uiBlip();
+      renderMapCards();
+    });
+    const mapRow = $('map-row');
+    if (mapRow) {
+      mapRow.addEventListener('click', (e) => {
+        const card = e.target.closest ? e.target.closest('.map-card') : null;
+        if (!card || card.disabled) return;
+        selectedMapId = card.getAttribute('data-id');
+        uiBlip();
+        renderMapCards();
+      });
+    }
+    bindPress($('btn-next-map'), () => {
+      const list = window.VoltMaps.list;
+      let index = 0;
+      for (let i = 0; i < list.length; i++) if (currentMap && list[i].id === currentMap.id) index = i;
+      const next = list[index + 1];
+      if (!next) return;
+      selectedMapId = next.id;
+      uiBlip();
+      startSelectedMap();
+    });
+    bindPress($('btn-result-maps'), () => { uiBlip(); openMaps(); });
     bindPress($('btn-howto'), () => { unlockAudio(); uiBlip(); openHelp('title'); });
     bindPress($('btn-help-close'), () => { uiBlip(); closeHelp(); });
     bindPress($('btn-help-ride'), onHelpPrimary);
@@ -2078,7 +2355,8 @@ function buildSky(hy) {
 
   function boot() {
     window.addEventListener('error', (e) => reportFault(e.message || 'unknown'));
-    track = buildTrack();
+    loadMapProgress();
+    track = buildTrack('nite-pier');
     best = loadNum(BEST_KEY);
     coinBank = loadNum(COIN_KEY) || 0;
     seenHelp = false;
