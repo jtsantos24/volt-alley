@@ -10,7 +10,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="VOLT ALLEY">
-  <meta name="description" content="VOLT ALLEY is a gritty cyberpunk hover-bike lane racer. Four lanes, a heat limit, and landings that count.">
+  <meta name="description" content="VOLT ALLEY is a storm-lit futuristic hill race. One line, a hot core, and landings that pay you back.">
   <title>VOLT ALLEY</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon-192.png" type="image/png">
@@ -29,7 +29,6 @@
         <div class="label">TIME</div>
         <div id="time-val">0:00.00</div>
         <div id="best-val">BEST --:--.--</div>
-        <div id="pips" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       </div>
       <div class="center">
         <div id="attitude" aria-hidden="true">
@@ -54,8 +53,6 @@
       <button id="btn-turbo" class="pad" type="button">TURBO</button>
       <button id="btn-lean-back" class="pad lean" type="button">LEAN<br>BACK</button>
       <button id="btn-lean-fwd" class="pad lean" type="button">LEAN<br>FWD</button>
-      <button id="btn-lane-up" class="pad" type="button">LANE<br>UP</button>
-      <button id="btn-lane-down" class="pad" type="button">LANE<br>DOWN</button>
     </div>
 
     <div id="countdown" class="hidden" aria-hidden="true"></div>
@@ -66,7 +63,7 @@
       <div class="title-block">
         <p class="kicker">SECTOR 9 CIRCUIT</p>
         <h1 class="logo">VOLT<br>ALLEY</h1>
-        <p class="tag">Four lanes. A hot core. Stick the landing.</p>
+        <p class="tag">One line. Storm light. Stick the landing.</p>
         <p id="title-best" class="bestline">BEST --:--.--</p>
         <div class="row">
           <button id="btn-ride" class="primary" type="button">RIDE</button>
@@ -86,13 +83,14 @@
           </div>
         </div>
         <div class="help-grid">
-          <p><b>THROTTLE</b> Hold the big pad to build speed. Let go and the bike coasts. It does not stop on a dime.</p>
+          <p><b>THROTTLE</b> Hold the big pad to build speed. Let go and the bike coasts. It rides the hills and launches off steep crests.</p>
           <p><b>TURBO</b> A hotter shove. The core climbs. Fill the gauge and boost locks until it cools. Cyan pads reset heat.</p>
-          <p><b>LANES</b> Up moves you toward the skyline, down toward you. Tall fences block a lane. Debris scrapes your speed.</p>
           <p><b>LEAN</b> In the air, hold BACK or FWD to flip. The ring is your nose. Square it up before you hit. A full turn that lands level still counts.</p>
-          <p><b>CRASH</b> A bad landing or a fence costs 3 seconds. You respawn past the impact, slower, and the clock keeps the penalty.</p>
+          <p><b>TRICKS</b> A clean flip takes 0.5s off the clock per rotation, plus 0.5s for a multi-flip and 0.5s more for big air, and you get a short speed boost. A crash pays nothing.</p>
+          <p><b>GATES</b> Jump the low barriers and the glowing beams. Rocks scrape your speed if you stay on the ground.</p>
+          <p><b>CRASH</b> A bad landing or a gate you clip costs 3 seconds. You respawn past it, slower, and the clock keeps the penalty.</p>
           <p><b>FINISH</b> Cross the Sector 9 gate. Your best time stays on this phone.</p>
-          <p class="keys">Keys: D, Right, or Space throttle. Shift turbo. W/S or Up/Down lanes. A or Left lean back. Q lean forward. P pause.</p>
+          <p class="keys">Keys: D, Right, or Space throttle. Shift turbo. A, Left, or Up lean back. Q or Down lean forward. P pause.</p>
         </div>
       </div>
     </section>
