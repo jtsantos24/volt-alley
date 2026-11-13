@@ -25,23 +25,33 @@
     <div id="vignette"></div>
 
     <div id="hud" class="hidden">
-      <div class="left">
-        <div class="label">TIME</div>
-        <div id="time-val">0:00.00</div>
-        <div id="best-val">BEST --:--.--</div>
+      <div id="place" aria-live="polite">4TH</div>
+      <div id="racebar" aria-hidden="true">
+        <i id="mark-you" class="mark you"></i>
+        <i id="mark-nyx" class="mark"></i>
+        <i id="mark-vex" class="mark"></i>
+        <i id="mark-ion" class="mark"></i>
+        <span class="finish-flag"></span>
       </div>
-      <div class="center">
+      <div id="pills">
+        <div class="pill"><span class="coin-dot" aria-hidden="true"></span><span id="coin-val">0</span></div>
+        <div class="pill watch"><span id="time-val">0:00.00</span></div>
+      </div>
+      <div id="gap"><span id="gap-val">0 M</span></div>
+      <div id="cluster">
+        <div class="gauge" id="gauge-speed" aria-label="Speed">
+          <div class="needle" id="speed-needle"></div>
+          <b id="speed-val">0</b>
+          <small>KM/H</small>
+        </div>
         <div id="attitude" aria-hidden="true">
           <div id="horizon-line"></div>
           <div id="nose-mark"></div>
         </div>
-      </div>
-      <div class="right">
-        <div id="speed"><span id="speed-val">0</span><span class="unit">KM/H</span></div>
-        <div id="heat" role="meter" aria-label="Core heat" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-          <div id="heat-fill"></div>
+        <div class="gauge" id="heat" role="meter" aria-label="Core heat" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="needle" id="heat-needle"></div>
+          <b id="heat-label">HEAT</b>
         </div>
-        <div id="heat-label">HEAT</div>
       </div>
     </div>
 
@@ -49,10 +59,10 @@
     <button id="btn-mute" class="chrome" type="button">SOUND ON</button>
 
     <div id="touch" class="hidden">
-      <button id="btn-throttle" class="pad" type="button">THROTTLE</button>
-      <button id="btn-turbo" class="pad" type="button">TURBO</button>
-      <button id="btn-lean-back" class="pad lean" type="button">LEAN<br>BACK</button>
-      <button id="btn-lean-fwd" class="pad lean" type="button">LEAN<br>FWD</button>
+      <button id="btn-brake" class="pedal" type="button"><span class="pedal-title">BRAKE</span><span class="pedal-sub">LEAN BACK</span></button>
+      <button id="btn-lean-fwd" class="round lean" type="button">FWD</button>
+      <button id="btn-turbo" class="round boost" type="button">BOOST</button>
+      <button id="btn-throttle" class="pedal gas" type="button"><span class="pedal-title">GAS</span></button>
     </div>
 
     <div id="countdown" class="hidden" aria-hidden="true"></div>
@@ -65,6 +75,7 @@
         <h1 class="logo">VOLT<br>ALLEY</h1>
         <p class="tag">One line. Storm light. Stick the landing.</p>
         <p id="title-best" class="bestline">BEST --:--.--</p>
+        <p id="title-coins" class="bestline">COINS 0</p>
         <div class="row">
           <button id="btn-ride" class="primary" type="button">RIDE</button>
           <button id="btn-howto" class="ghost" type="button">HOW TO RIDE</button>
@@ -83,14 +94,14 @@
           </div>
         </div>
         <div class="help-grid">
-          <p><b>THROTTLE</b> Hold the big pad to build speed. Let go and the bike coasts. It rides the hills and launches off steep crests.</p>
-          <p><b>TURBO</b> A hotter shove. The core climbs. Fill the gauge and boost locks until it cools. Cyan pads reset heat.</p>
-          <p><b>LEAN</b> In the air, hold BACK or FWD to flip. The ring is your nose. Square it up before you hit. A full turn that lands level still counts.</p>
+          <p><b>GAS</b> The big right pedal builds speed. Let go and the bike coasts along the hills and launches off steep crests.</p>
+          <p><b>BRAKE</b> The big left pedal scrubs speed on the ground. In the air it leans the nose back. The small FWD button leans the nose forward.</p>
+          <p><b>BOOST</b> The round button by the gas pedal. The core climbs. Fill the heat dial and boost locks until it cools. Cyan pads reset heat.</p>
           <p><b>TRICKS</b> A clean flip takes 0.5s off the clock per rotation, plus 0.5s for a multi-flip and 0.5s more for big air, and you get a short speed boost. A crash pays nothing.</p>
-          <p><b>GATES</b> Jump the low barriers and the glowing beams. Rocks scrape your speed if you stay on the ground.</p>
-          <p><b>CRASH</b> A bad landing or a gate you clip costs 3 seconds. You respawn past it, slower, and the clock keeps the penalty.</p>
-          <p><b>FINISH</b> Cross the Sector 9 gate. Your best time stays on this phone.</p>
-          <p class="keys">Keys: D, Right, or Space throttle. Shift turbo. A, Left, or Up lean back. Q or Down lean forward. P pause.</p>
+          <p><b>RIVALS</b> NYX, VEX, and ION ride the same line. The badge is your place. The bar shows the pack. The number on the right is meters to the next marker.</p>
+          <p><b>COINS</b> Grab the glowing chips on the line. The count stays on this phone.</p>
+          <p><b>GATES</b> Jump the low barriers and the glowing beams. Rocks scrape your speed if you stay on the ground. A bad landing costs 3 seconds.</p>
+          <p class="keys">Keys: D, Right, or Space gas. S brake. Shift boost. A, Left, or Up lean back. Q or Down lean forward. P pause.</p>
         </div>
       </div>
     </section>
@@ -116,7 +127,9 @@
         <p id="result-kicker" class="kicker">SECTOR CLEAR</p>
         <p id="result-time" class="result-time">0:00.00</p>
         <dl class="stats">
+          <div><dt>PLACE</dt><dd id="result-place">—</dd></div>
           <div><dt>BEST</dt><dd id="result-best">--:--.--</dd></div>
+          <div><dt>COINS</dt><dd id="result-coins">0</dd></div>
           <div><dt>FAULTS</dt><dd id="result-faults">0</dd></div>
           <div><dt>CLEAN</dt><dd id="result-cleans">0</dd></div>
           <div><dt>TOP</dt><dd><span id="result-top">0</span> KM/H</dd></div>
