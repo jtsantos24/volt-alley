@@ -49,6 +49,21 @@
   };
 
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const GARAGE_KEY = 'volt-alley-garage';
+  const SHELLS = [
+    { id: 'stock', name: 'STOCK', color: null, stars: 0 },
+    { id: 'pier', name: 'PIER', color: '#5ef6ff', stars: 3 },
+    { id: 'spine', name: 'SPINE', color: '#ff4ad0', stars: 6 },
+    { id: 'cut', name: 'CUT', color: '#ffe08a', stars: 9 },
+    { id: 'well', name: 'WELL', color: '#b08cff', stars: 12 },
+    { id: 'veil', name: 'VEIL', color: '#ff6a4a', stars: 15 },
+  ];
+  const TUNES = [
+    { id: 'vent', name: 'CORE VENT', cost: 8, blurb: 'Heat builds slower' },
+    { id: 'spring', name: 'ARC SPRING', cost: 12, blurb: 'Hard landings lose less speed' },
+    { id: 'coil', name: 'DRIVE COIL', cost: 16, blurb: 'Climbs sap less speed' },
+  ];
+  let garage = { shell: 'stock', tunes: {}, stock: true, haptics: !reduceMotion };
   const audio = window.VoltAudio;
 
   const $ = (id) => document.getElementById(id);
@@ -162,6 +177,32 @@ let raceTime = 0;
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
   }
+  function tuningOn(id) {
+    return !garage.stock && garage.tunes && garage.tunes[id];
+  }
+  function buzz(pattern) {
+    if (!garage.haptics || reduceMotion) return;
+    try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (err) { /* ignore */ }
+  }
+  function loadGarage() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(GARAGE_KEY) || 'null');
+      if (raw && typeof raw === 'object') {
+        garage.shell = raw.shell || 'stock';
+        garage.tunes = raw.tunes || {};
+        garage.stock = raw.stock !== false;
+        garage.haptics = raw.haptics != null ? !!raw.haptics : !reduceMotion;
+      }
+    } catch (err) { /* ignore */ }
+  }
+  function saveGarage() {
+    try { localStorage.setItem(GARAGE_KEY, JSON.stringify(garage)); } catch (err) { /* ignore */ }
+  }
+  function shellColor() {
+    if (garage.shell === 'stock') return null;
+    for (let i = 0; i < SHELLS.length; i++) if (SHELLS[i].id === garage.shell) return SHELLS[i].color;
+    return null;
+  }
   function setText(el, text) {
     if (el && el.textContent !== text) el.textContent = text;
   }
@@ -272,14 +313,16 @@ function buildTrack(mapId) {
     audio.jump();
   }
 
-  function startCrash() {
-    if (bike.crashing || bike.invuln > 0) return;
+  function startCrash(fromHazard) {
+    if (bike.crashing) return;
+    if (!fromHazard && bike.guardLanding) return;
     bike.crashing = true;
     bike.crashT = 0;
     bike.looping = null;
     shake = 1;
     crashes += 1;
     audio.crash();
+    buzz(46);
     burst(bike.x, bike.y, '#ff2bd6', 14, 0.5);
     toast('FAULT', 'bad');
   }
@@ -308,7 +351,8 @@ function buildTrack(mapId) {
     bike.prevH = g.h;
     bike.prevSlope = g.slope;
     bike.airTime = 0;
-    bike.invuln = 0.8;
+    bike.invuln = 0.45;
+    bike.guardLanding = true;
     bike.debrisHit = null;
     bike.flips = 0;
     cameraX = bike.x - W * 0.32;
@@ -350,13 +394,13 @@ function buildTrack(mapId) {
     if (bike.loopU >= 1) {
       bike.looping = null;
       bike.loopSkip = loop;
-      bike.x = loop.exit + 24;
+      bike.x = loop.exit + 56;
       bike.prevX = bike.x;
       const g = queryGround(bike.x);
-      bike.y = g.h + 36;
+      bike.y = g.h + 10;
       bike.air = true;
-      bike.vy = 90;
-      bike.pitch = 0.12;
+      bike.vy = 24;
+      bike.pitch = 0.06;
       bike.takeoffPitch = bike.pitch;
       bike.flips = 0;
       bike.airTime = 0.08;
@@ -366,7 +410,7 @@ function buildTrack(mapId) {
     }
     const pose = loopPose(loop, bike.loopU);
     bike.prevX = bike.x;
-    bike.x = pose.x;
+    bike.x = Math.max(bike.x, pose.x);
     bike.y = pose.y;
     bike.pitch = pose.pitch;
     bike.air = false;
@@ -378,7 +422,7 @@ function buildTrack(mapId) {
     ghostAcc += dt || 0;
     if (ghostAcc < 0.05) return;
     ghostAcc = 0;
-    if (ghostRec.length >= 2000) return;
+    if (ghostRec.length >= 4000) return;
     ghostRec.push({ t: Math.round(raceTime * 100) / 100, x: Math.round(bike.x), y: Math.round(bike.y), p: Math.round(bike.pitch * 100) / 100 });
   }
 
@@ -491,13 +535,20 @@ function buildTrack(mapId) {
     bike.prevH = g.h;
     bike.prevSlope = g.slope;
     if (diff >= TUNE.crashAngle) {
-      startCrash(bike.x + 160);
+      if (bike.guardLanding) {
+        bike.guardLanding = false;
+        bike.pitch = groundAngle;
+        return;
+      }
+      startCrash(false);
       return;
     }
+    bike.guardLanding = false;
     bike.pitch = groundAngle;
     if (diff >= TUNE.hardAngle) {
       const k = (diff - TUNE.hardAngle) / (TUNE.crashAngle - TUNE.hardAngle);
-      bike.speed *= 1 - 0.42 * k;
+      const soften = tuningOn('spring') ? 0.7 : 1;
+      bike.speed *= 1 - 0.42 * k * soften;
       shake = Math.max(shake, 0.35 + k * 0.45);
       audio.land(true);
       burst(bike.x, g.h, '#ffb020', 8, 0.35);
@@ -521,6 +572,7 @@ function buildTrack(mapId) {
       else if (flips === 2) name = 'DOUBLE';
       else if (flips === 1) name = back ? 'BACKFLIP' : 'FLIP';
       toast(name + ' -' + save.toFixed(1) + 's', 'good');
+      buzz(18);
       return;
     }
     if (airTime > 0.28) {
@@ -535,10 +587,7 @@ function buildTrack(mapId) {
   }
 
   function collide() {
-    if (bike.invuln > 0 || bike.crashing || bike.air && bike.y > queryGround(bike.x).h + 80 && bike.vy > 0) {
-      /* still test gates; the early-out above is only for rising far above everything */
-    }
-    if (bike.invuln > 0 || bike.crashing) return;
+    if (bike.crashing) return;
     const hazards = track.hazards;
     for (let i = 0; i < hazards.length; i++) {
       const h = hazards[i];
@@ -556,7 +605,7 @@ function buildTrack(mapId) {
         burst(bike.x, bike.y, '#ffb020', 8, 0.3);
         toast('SCRAPE', 'bad');
       } else {
-        startCrash(h.x + h.w + 90);
+        startCrash(true);
         return;
       }
     }
@@ -650,12 +699,15 @@ function buildTrack(mapId) {
       coinBank += 1;
       saveNum(COIN_KEY, coinBank);
       burst(c.x, gy, '#5ef6ff', 6, 0.28);
+      try { audio.coin(); } catch (err) { /* ignore */ }
+      buzz(12);
     }
   }
 
   function physics(dt) {
     updateRivals(dt);
     if (bike.crashing) {
+      raceTime += dt;
       bike.crashT += dt;
       bike.pitch += dt * 7;
       bike.y += dt * 20;
@@ -671,16 +723,17 @@ function buildTrack(mapId) {
       bike.heat = Math.max(0, bike.heat - TUNE.heatLock * dt);
       if (bike.heat <= TUNE.heatClear) bike.overheated = false;
     } else if (boosting) {
-      bike.heat += TUNE.heatOn * dt;
+      bike.heat += TUNE.heatOn * (tuningOn('vent') ? 0.82 : 1) * dt;
       if (bike.heat >= 1) {
         bike.heat = 1;
         bike.overheated = true;
         shake = Math.max(shake, 0.55);
         audio.overheat();
+        buzz(32);
         toast('OVERHEAT', 'bad');
       }
     } else {
-      bike.heat = Math.max(0, bike.heat - TUNE.heatOff * dt);
+      bike.heat = Math.max(0, bike.heat - TUNE.heatOff * (tuningOn('vent') ? 1.28 : 1) * dt);
     }
 
     const cap = bike.overheated ? TUNE.heatSpeed : (boosting ? TUNE.turboSpeed : TUNE.maxSpeed);
@@ -696,7 +749,8 @@ function buildTrack(mapId) {
     if (inp.brake && !bike.air) bike.speed -= 520 * dt;
     if (!bike.air) {
       const climb = queryGround(bike.x).slope;
-      bike.speed -= Math.max(0, climb) * 110 * dt;
+      const climbCut = tuningOn('coil') ? 0.8 : 1;
+      bike.speed -= Math.max(0, climb) * 110 * climbCut * dt;
       bike.speed += Math.max(0, -climb) * 46 * dt;
     }
     bike.speed -= bike.speed * TUNE.drag * dt;
@@ -796,6 +850,15 @@ function buildTrack(mapId) {
       trail.shift();
     }
 
+    if (!bike.crashing && track && track.checkpoints) {
+      for (let i = 0; i < track.checkpoints.length; i++) {
+        const cp = track.checkpoints[i];
+        if (bike.prevX < cp && bike.x >= cp && cp > 80) {
+          try { audio.checkpoint(); } catch (err) { /* ignore */ }
+          buzz([8, 20, 8]);
+        }
+      }
+    }
     if (!bike.crashing) collectCoins();
     if (bike.loopSkip && bike.x > bike.loopSkip.exit + 80) bike.loopSkip = null;
     recordGhost(dt);
@@ -1098,7 +1161,7 @@ function buildSky(hy) {
 
   function drawCity() {
     for (let i = 0; i < art.layers.length; i++) drawStrip(art.layers[i]);
-    if (bolt > 0.12) {
+    if (bolt > 0.12 && fpsSmoothed >= 50 && !reduceMotion) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = Math.min(0.55, bolt * 0.6);
@@ -1126,7 +1189,7 @@ function buildSky(hy) {
     ctx.lineWidth = 3;
     ctx.lineJoin = 'miter';
     ctx.shadowColor = '#9ae7ff';
-    ctx.shadowBlur = 16;
+    if (fpsSmoothed >= 50 && !reduceMotion) ctx.shadowBlur = 12;
     ctx.beginPath();
     let x = boltX;
     let y = 4;
@@ -1401,6 +1464,10 @@ function buildSky(hy) {
       shell.addColorStop(0, rival);
       shell.addColorStop(0.45, rival);
       shell.addColorStop(1, '#141018');
+    } else if (shellColor()) {
+      shell.addColorStop(0, shellColor());
+      shell.addColorStop(0.4, '#e7eef6');
+      shell.addColorStop(1, '#1a1e28');
     } else {
       shell.addColorStop(0, '#f7fbff');
       shell.addColorStop(0.42, '#d5dee8');
@@ -1661,7 +1728,7 @@ function buildSky(hy) {
     ctx.globalAlpha = 1;
     ctx.lineJoin = 'round';
     ctx.clearRect(0, 0, W, H);
-    if (shake > 0.02) {
+    if (shake > 0.02 && !reduceMotion) {
       const mag = shake * 7;
       ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
     }
@@ -1747,7 +1814,7 @@ function buildSky(hy) {
   }
 
   function showOnly(name) {
-    const ids = ['title', 'help', 'pause', 'results', 'maps'];
+    const ids = ['title', 'help', 'pause', 'results', 'maps', 'garage'];
     for (let i = 0; i < ids.length; i++) {
       $('overlay-' + ids[i]).classList.toggle('hidden', ids[i] !== name);
     }
@@ -1759,6 +1826,11 @@ function buildSky(hy) {
     $('hud').classList.toggle('hidden', !live || helpOpen);
     $('touch').classList.toggle('hidden', !(phase === 'play' || phase === 'countdown') || helpOpen);
     $('btn-pause').classList.toggle('hidden', !(phase === 'play' || phase === 'countdown'));
+    const sheet = ['help', 'pause', 'results', 'maps', 'garage'].some(function (id) {
+      const el = $('overlay-' + id);
+      return el && !el.classList.contains('hidden');
+    });
+    $('btn-mute').classList.toggle('under-sheet', sheet);
     if (phase !== 'play') $('app').classList.remove('overheat');
   }
 
@@ -1848,27 +1920,31 @@ function buildSky(hy) {
     phase = 'results';
     const id = currentMap ? currentMap.id : 'nite-pier';
     const prev = mapRecord(id);
-    const record = prev.best == null || raceTime < prev.best;
+    const medalRun = !!garage.stock;
+    const record = medalRun && (prev.best == null || raceTime < prev.best);
     let stars = 1;
     if (currentMap && raceTime <= currentMap.star2) stars = 2;
     if (currentMap && raceTime <= currentMap.star3) stars = 3;
     const coinTotal = (track.coins || []).length;
     const allCoins = coinTotal > 0 && runCoins >= coinTotal;
-    mapProgress[id] = {
-      best: record ? raceTime : prev.best,
-      stars: Math.max(prev.stars || 0, stars),
-      clean: prev.clean || crashes === 0,
-      circuit: prev.circuit || allCoins,
-    };
-    saveMapProgress();
-    if (record && ghostRec.length > 1) {
-      try { localStorage.setItem('volt-alley-ghost-' + id, JSON.stringify(ghostRec)); } catch (err) { /* full */ }
+    if (medalRun) {
+      mapProgress[id] = {
+        best: record ? raceTime : prev.best,
+        stars: Math.max(prev.stars || 0, stars),
+        clean: prev.clean || crashes === 0,
+        circuit: prev.circuit || allCoins,
+      };
+      saveMapProgress();
+      if (record && ghostRec.length > 1) {
+        try { localStorage.setItem('volt-alley-ghost-' + id, JSON.stringify(ghostRec)); } catch (err) { /* full */ }
+      }
     }
-    best = mapProgress[id].best;
-    setText($('result-kicker'), record ? 'NEW RECORD' : (stars >= 3 ? '3 STARS' : 'SECTOR CLEAR'));
+    best = mapRecord(id).best;
+    if (medalRun && best != null) saveNum(BEST_KEY, best);
+    setText($('result-kicker'), !medalRun ? 'TUNED RUN' : (record ? 'NEW RECORD' : (stars >= 3 ? '3 STARS' : 'SECTOR CLEAR')));
     setText($('result-time'), fmt(raceTime));
     setText($('result-best'), fmt(best));
-    setText($('result-stars'), stars + ' STAR' + (stars > 1 ? 'S' : '') + (allCoins ? ' · CIRCUIT' : '') + (crashes === 0 ? ' · CLEAN' : ''));
+    setText($('result-stars'), (!medalRun ? 'MEDALS NEED STOCK · ' : '') + stars + ' STAR' + (stars > 1 ? 'S' : '') + (allCoins ? ' · CIRCUIT' : '') + (crashes === 0 ? ' · CLEAN' : ''));
     setText($('result-faults'), String(crashes));
     setText($('result-cleans'), String(cleans));
     setText($('result-top'), String(kmh(topSpeed)));
@@ -1947,7 +2023,10 @@ function buildSky(hy) {
       html += '<i style="background:' + m.accent + '"></i>';
       html += '<b>' + m.name + '</b>';
       html += '<small>' + m.tier + '</small>';
-      if (!open) html += '<em>FINISH ' + String(m.unlock || '').replace(/-/g, ' ').toUpperCase() + '</em>';
+      if (!open) {
+        const rule = m.id === 'ash-veil' ? 'FINISH VOID WELL OR 9 STARS' : ('FINISH ' + String(m.unlock || '').replace(/-/g, ' ').toUpperCase());
+        html += '<em>LOCK · ' + rule + '</em>';
+      }
       else html += '<em>' + (rec.best == null ? 'NO TIME' : fmt(rec.best)) + '</em><span>' + starGlyph(rec.stars || 0) + '</span>';
       html += '</button>';
     }
@@ -1957,6 +2036,44 @@ function buildSky(hy) {
     setText($('btn-map-ghost'), ghostOn ? 'GHOST ON' : 'GHOST OFF');
     const shells = totalStars() >= 15 ? 5 : totalStars() >= 12 ? 4 : totalStars() >= 9 ? 3 : totalStars() >= 6 ? 2 : totalStars() >= 3 ? 1 : 0;
     setText($('maps-shells'), 'SHELLS ' + shells + '/5');
+  }
+
+  function renderGarage() {
+    const coins = $('garage-coins');
+    if (coins) coins.textContent = coinBank + ' COINS';
+    const shells = $('shell-row');
+    const tunes = $('tune-row');
+    if (shells) {
+      let html = '';
+      const stars = totalStars();
+      for (let i = 0; i < SHELLS.length; i++) {
+        const s = SHELLS[i];
+        const owned = stars >= s.stars;
+        const on = garage.shell === s.id;
+        html += '<button type="button" class="garage-chip' + (on ? ' on' : '') + (owned ? '' : ' locked') + '" data-shell="' + s.id + '"' + (owned ? '' : ' disabled') + '>';
+        html += s.name + (owned ? '' : ' · ' + s.stars) + '</button>';
+      }
+      shells.innerHTML = html;
+    }
+    if (tunes) {
+      let html = '';
+      for (let i = 0; i < TUNES.length; i++) {
+        const t = TUNES[i];
+        const owned = !!(garage.tunes && garage.tunes[t.id]);
+        html += '<button type="button" class="garage-chip' + (owned ? ' on' : '') + '" data-tune="' + t.id + '">';
+        html += t.name + (owned ? ' · OWNED' : ' · ' + t.cost) + '</button>';
+      }
+      tunes.innerHTML = html;
+    }
+    setText($('btn-stock'), garage.stock ? 'STOCK ON' : 'STOCK OFF');
+    setText($('btn-haptics'), garage.haptics ? 'HAPTICS ON' : 'HAPTICS OFF');
+  }
+
+  function openGarage() {
+    phase = 'garage';
+    renderGarage();
+    showOnly('garage');
+    applyChrome();
   }
 
   function openMaps() {
@@ -2126,6 +2243,46 @@ function buildSky(hy) {
     bindPress($('btn-ride'), onRide);
     bindPress($('btn-maps-back'), () => { uiBlip(); toTitle(); });
     bindPress($('btn-map-race'), () => { unlockAudio(); uiBlip(); startSelectedMap(); });
+    bindPress($('btn-open-garage'), () => { uiBlip(); openGarage(); });
+    bindPress($('btn-garage-back'), () => { uiBlip(); openMaps(); });
+    bindPress($('btn-stock'), () => { garage.stock = !garage.stock; saveGarage(); uiBlip(); renderGarage(); });
+    bindPress($('btn-haptics'), () => { garage.haptics = !garage.haptics; saveGarage(); uiBlip(); renderGarage(); });
+    const shellRow = $('shell-row');
+    if (shellRow) {
+      shellRow.addEventListener('click', (e) => {
+        const chip = e.target.closest ? e.target.closest('[data-shell]') : null;
+        if (!chip || chip.disabled) return;
+        garage.shell = chip.getAttribute('data-shell');
+        saveGarage();
+        uiBlip();
+        renderGarage();
+      });
+    }
+    const tuneRow = $('tune-row');
+    if (tuneRow) {
+      tuneRow.addEventListener('click', (e) => {
+        const chip = e.target.closest ? e.target.closest('[data-tune]') : null;
+        if (!chip) return;
+        const id = chip.getAttribute('data-tune');
+        if (garage.tunes && garage.tunes[id]) return;
+        const spec = TUNES.filter(function (t) { return t.id === id; })[0];
+        if (!spec || coinBank < spec.cost) {
+          const need = spec ? Math.max(0, spec.cost - coinBank) : 0;
+          chip.classList.remove('shake');
+          void chip.offsetWidth;
+          chip.classList.add('shake');
+          toast('NEED ' + need + ' MORE COINS', 'bad');
+          uiBlip();
+          return;
+        }
+        coinBank -= spec.cost;
+        saveNum(COIN_KEY, coinBank);
+        garage.tunes[id] = true;
+        saveGarage();
+        uiBlip();
+        renderGarage();
+      });
+    }
     bindPress($('btn-map-ghost'), () => {
       ghostOn = !ghostOn;
       try { localStorage.setItem('volt-alley-ghost', ghostOn ? '1' : '0'); } catch (err) { /* ignore */ }
@@ -2356,6 +2513,7 @@ function buildSky(hy) {
   function boot() {
     window.addEventListener('error', (e) => reportFault(e.message || 'unknown'));
     loadMapProgress();
+    loadGarage();
     track = buildTrack('nite-pier');
     best = loadNum(BEST_KEY);
     coinBank = loadNum(COIN_KEY) || 0;

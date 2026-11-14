@@ -621,6 +621,12 @@
     ui: function () {
       blip(760, 0.045, 'square', 0.03);
     },
+    coin: function () {
+      blip(1040, 0.05, 'sine', 0.035, 1560);
+    },
+    checkpoint: function () {
+      blip(620, 0.04, 'square', 0.028, 880);
+    },
     suspend: function () {
       hiddenPause = true;
       safeSuspend();

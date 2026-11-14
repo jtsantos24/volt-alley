@@ -17,11 +17,11 @@
   const M = function (meters) { return meters * 12; };
 
   const LIST = [
-    { id: 'nite-pier', name: 'NITE PIER', tier: 'NOVICE', accent: '#5ef6ff', theme: 'pier', star2: 58, star3: 48, seed: 101, unlock: null },
-    { id: 'amp-spine', name: 'AMP SPINE', tier: 'INTERMEDIATE', accent: '#ff4ad0', theme: 'spine', star2: 68, star3: 56, seed: 202, unlock: 'nite-pier' },
-    { id: 'static-cut', name: 'STATIC CUT', tier: 'ADVANCED', accent: '#ffe08a', theme: 'cut', star2: 74, star3: 62, seed: 303, unlock: 'amp-spine' },
-    { id: 'void-well', name: 'VOID WELL', tier: 'EXPERT', accent: '#b08cff', theme: 'well', star2: 78, star3: 66, seed: 404, unlock: 'static-cut' },
-    { id: 'ash-veil', name: 'ASH VEIL', tier: 'MASTER', accent: '#ff6a4a', theme: 'veil', star2: 88, star3: 74, seed: 505, unlock: 'void-well' },
+    { id: 'nite-pier', name: 'NITE PIER', tier: 'NOVICE', accent: '#5ef6ff', theme: 'pier', star2: 30, star3: 23, seed: 101, unlock: null },
+    { id: 'amp-spine', name: 'AMP SPINE', tier: 'INTERMEDIATE', accent: '#ff4ad0', theme: 'spine', star2: 36, star3: 29, seed: 202, unlock: 'nite-pier' },
+    { id: 'static-cut', name: 'STATIC CUT', tier: 'ADVANCED', accent: '#ffe08a', theme: 'cut', star2: 46, star3: 37, seed: 303, unlock: 'amp-spine' },
+    { id: 'void-well', name: 'VOID WELL', tier: 'EXPERT', accent: '#b08cff', theme: 'well', star2: 39, star3: 31, seed: 404, unlock: 'static-cut' },
+    { id: 'ash-veil', name: 'ASH VEIL', tier: 'MASTER', accent: '#ff6a4a', theme: 'veil', star2: 50, star3: 40, seed: 505, unlock: 'void-well' },
   ];
 
   function compile(id) {
@@ -145,17 +145,23 @@
       to(16, 40);
     }
     function gate() {
-      hazards.push({ kind: 'gate', x: x + M(6), w: 22, clear: 72 });
-      flat(16);
+      kicker(124, 'JUMP');
+      const gx = x + M(3);
+      valley(11, 18);
+      hazards.push({ kind: 'gate', x: gx, w: 22, clear: 64 });
+      landing();
     }
     function bar() {
-      hazards.push({ kind: 'bar', x: x + M(4), w: 30, clear: 48 });
-      flat(12);
+      kicker(108, 'JUMP');
+      const bx = x + M(3);
+      valley(9, 20);
+      hazards.push({ kind: 'bar', x: bx, w: 28, clear: 42 });
+      landing();
     }
     function loopRing() {
       const r = 112;
-      const a0 = Math.PI * 1.18;
-      const a1 = -Math.PI * 0.18;
+      const a0 = Math.PI;
+      const a1 = 0;
       const entry = x + M(10);
       const base = 42;
       const cy = base - Math.sin(a0) * r;
@@ -182,9 +188,14 @@
 
     function stretch(untilM) {
       const until = M(untilM);
+      let since = x;
       while (x < until) {
         rollers(2, 22, 12 + rand() * 6);
         sprinkle(36);
+        if (x - since > M(260)) {
+          cp();
+          since = x;
+        }
       }
     }
     if (map.id === 'nite-pier') {
@@ -231,8 +242,11 @@
       stepDown();
       heat(24);
       cp();
-      stretch(1800);
-      gate();
+      stretch(1700);
+      cp();
+      kicker(136, 'JUMP');
+      valley(12, 18);
+      landing();
       gate();
     } else if (map.id === 'static-cut') {
       startPad();
@@ -302,8 +316,9 @@
       stretch(1500);
       cp();
       loopRing();
+      flat(28);
       cp();
-      tunnel(22, 76);
+      tunnel(26, 118);
       heat(22);
       stretch(2300);
       cp();
@@ -316,7 +331,15 @@
     const finishAt = x + M(74);
     flat(74);
     pushKey(finishAt + M(80), 42);
-    checkpoints.push(Math.max(0, finishAt - M(90)));
+    let flag = finishAt - M(48);
+    let crowded = false;
+    for (let i = 0; i < hazards.length; i++) {
+      const hz = hazards[i];
+      if (flag > hz.x - M(28) && flag < hz.x + (hz.w || 24) + M(28)) crowded = true;
+    }
+    if (crowded) flag = finishAt - M(16);
+    const lastCp = checkpoints[checkpoints.length - 1];
+    if (!crowded && flag - lastCp > M(36)) checkpoints.push(flag);
 
     return {
       id: map.id,

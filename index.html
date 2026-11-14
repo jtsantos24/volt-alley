@@ -124,7 +124,7 @@
     </section>
 
     <section id="overlay-results" class="overlay hidden">
-      <div class="panel narrow">
+      <div class="panel results-panel">
         <p id="result-kicker" class="kicker">SECTOR CLEAR</p>
         <p id="result-time" class="result-time">0:00.00</p>
         <dl class="stats">
@@ -136,7 +136,7 @@
           <div><dt>TOP</dt><dd><span id="result-top">0</span> KM/H</dd></div>
         </dl>
         <p id="result-stars" class="tag"></p>
-        <div class="row">
+        <div class="row results-actions">
           <button id="btn-retry" class="primary" type="button">RIDE AGAIN</button>
           <button id="btn-next-map" class="primary hidden" type="button">NEXT MAP</button>
           <button id="btn-result-maps" class="ghost" type="button">MAPS</button>
@@ -157,7 +157,24 @@
         <div id="map-row" class="map-row"></div>
         <div class="row">
           <button id="btn-map-race" class="primary" type="button">RACE</button>
+          <button id="btn-open-garage" class="ghost" type="button">GARAGE</button>
           <button id="btn-map-ghost" class="ghost" type="button">GHOST ON</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="overlay-garage" class="overlay hidden">
+      <div class="panel garage-panel">
+        <p class="kicker">GARAGE</p>
+        <h2>SHELLS AND CORE</h2>
+        <p id="garage-coins" class="bestline">0 COINS</p>
+        <p class="tag">Shells unlock with stars. Tunings spend coins. Stock keeps medals honest.</p>
+        <div id="shell-row" class="chip-row"></div>
+        <div id="tune-row" class="chip-row"></div>
+        <div class="row">
+          <button id="btn-stock" class="primary" type="button">STOCK ON</button>
+          <button id="btn-haptics" class="ghost" type="button">HAPTICS ON</button>
+          <button id="btn-garage-back" class="ghost" type="button">BACK</button>
         </div>
       </div>
     </section>
