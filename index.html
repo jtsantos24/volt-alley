@@ -43,6 +43,7 @@
         <div class="gauge" id="gauge-speed" aria-label="Speed">
           <div class="needle" id="speed-needle"></div>
           <b id="speed-val">0</b>
+          <span id="lane-pip" aria-hidden="true"><i></i><i></i><i></i></span>
           <small>KM/H</small>
         </div>
         <div id="attitude" aria-hidden="true">
@@ -60,7 +61,11 @@
     <button id="btn-mute" class="chrome" type="button">SOUND ON</button>
 
     <div id="touch" class="hidden">
-      <button id="btn-brake" class="pedal" type="button"><span class="pedal-title">BRAKE</span><span class="pedal-sub">LEAN BACK</span></button>
+      <div id="lane-pad">
+        <button id="btn-lane-up" class="lane-btn" type="button" aria-label="Lane up">▲</button>
+        <button id="btn-lane-down" class="lane-btn" type="button" aria-label="Lane down">▼</button>
+      </div>
+      <button id="btn-lean-back" class="round lean" type="button">BACK</button>
       <button id="btn-lean-fwd" class="round lean" type="button">FWD</button>
       <button id="btn-turbo" class="round boost" type="button">BOOST</button>
       <button id="btn-throttle" class="pedal gas" type="button"><span class="pedal-title">GAS</span></button>
@@ -95,14 +100,16 @@
           </div>
         </div>
         <div class="help-grid">
-          <p><b>GAS</b> The big right pedal builds speed. Let go and the bike coasts along the hills and launches off steep crests.</p>
-          <p><b>BRAKE</b> The big left pedal scrubs speed on the ground. In the air it leans the nose back. The small FWD button leans the nose forward.</p>
-          <p><b>BOOST</b> The round button by the gas pedal. The core climbs. Fill the heat dial and boost locks until it cools. Cyan pads reset heat.</p>
+          <p><b>GAS</b> Hold the big right pedal to go. Let go to slow down.</p>
+          <p><b>LANES</b> Tap ▲ or ▼ to move one lane. Keys: Up/W, Down/X.</p>
+          <p><b>LEAN</b> In the air, BACK lifts the nose, FWD drops it.</p>
+          <p><b>BOOST</b> Hold for speed. Watch the heat.</p>
           <p><b>TRICKS</b> A clean flip takes 0.5s off the clock per rotation, plus 0.5s for a multi-flip and 0.5s more for big air, and you get a short speed boost. A crash pays nothing.</p>
           <p><b>RIVALS</b> NYX, VEX, and ION ride the same line. The badge is your place. The bar shows the pack. The number on the right is meters to the next marker.</p>
           <p><b>COINS</b> Grab the glowing chips on the line. The count stays on this phone.</p>
           <p><b>GATES</b> Jump the low barriers and the glowing beams. A crash sends you back to the last checkpoint. The clock keeps running.</p>
-          <p class="keys">Keys: D, Right, or Space gas. S brake. Shift boost. A, Left, or Up lean back. Q or Down lean forward. P pause.</p>
+          <p><b>REAR WHEEL</b> Closing on a rival's rear wheel in your lane is a fault. A red tail light and an outlined ! show before contact. You respawn in place. A rival running into you does not fault you.</p>
+          <p class="keys">Keys: D, Right, or Space gas. Up/W and Down/X lanes. A or Left lean back. Q or Z lean forward. Shift boost. P pause.</p>
         </div>
       </div>
     </section>
@@ -136,7 +143,9 @@
           <div><dt>TOP</dt><dd><span id="result-top">0</span> KM/H</dd></div>
         </dl>
         <p id="result-stars" class="tag"></p>
+        <p id="result-run" class="tag"></p>
         <div class="row results-actions">
+          <button id="btn-copy-run" class="ghost" type="button">COPY RUN</button>
           <button id="btn-retry" class="primary" type="button">RIDE AGAIN</button>
           <button id="btn-next-map" class="primary hidden" type="button">NEXT MAP</button>
           <button id="btn-result-maps" class="ghost" type="button">MAPS</button>
@@ -156,7 +165,7 @@
         </div>
         <div id="map-row" class="map-row"></div>
         <div class="row">
-          <button id="btn-map-race" class="primary" type="button">RACE</button>
+          <button id="btn-map-race" class="primary" type="button">RACE<small id="tuned-line" class="tuned-line hidden">TUNED: NO RECORDS OR UNLOCKS</small></button>
           <button id="btn-open-garage" class="ghost" type="button">GARAGE</button>
           <button id="btn-map-ghost" class="ghost" type="button">GHOST ON</button>
         </div>
@@ -176,6 +185,7 @@
           <button id="btn-haptics" class="ghost" type="button">HAPTICS ON</button>
           <button id="btn-garage-back" class="ghost" type="button">BACK</button>
         </div>
+        <p id="stock-note" class="tag">Tuned runs don't save times, stars, ghosts, or unlocks.</p>
       </div>
     </section>
 

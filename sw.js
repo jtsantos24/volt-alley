@@ -2,7 +2,7 @@
    Bump CACHE when you ship new files so installed phones drop the old set. */
 'use strict';
 
-const CACHE = 'volt-alley-v11-1';
+const CACHE = 'volt-alley-v13rc7';
 const ASSETS = [
   './',
   './index.html',
@@ -33,17 +33,6 @@ self.addEventListener('activate', (event) => {
     const keys = await caches.keys();
     await Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)));
     await self.clients.claim();
-    if (!self.__voltUpdating) return;
-    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    await Promise.all(windows.map(async (client) => {
-      if (!client.navigate) return;
-      try {
-        const url = new URL(client.url);
-        if (url.searchParams.get('updated') === '1') return;
-        url.searchParams.set('updated', '1');
-        await client.navigate(url.toString());
-      } catch (err) { /* the page listener reloads too */ }
-    }));
   })());
 });
 

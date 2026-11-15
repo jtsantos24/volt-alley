@@ -408,7 +408,13 @@
   let musicTimer = null;
   let muted = false;
   let hiddenPause = false;
+  let pendingUnlock = false;
+  let musicStarted = false;
   let suspendTimer = null;
+  let tickAt = 0;
+  let tickSpeed = -1;
+  let tickTurbo = false;
+  let tickDrive = false;
   let lastMood = '';
 
   function ensure() {
@@ -416,6 +422,7 @@
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return false;
     try { ctx = new AC(); } catch (err) { ctx = null; return false; }
+    if (ctx.addEventListener) ctx.addEventListener('statechange', onStateChange);
     master = ctx.createGain();
     master.gain.value = muted ? 0 : 0.8;
     master.connect(ctx.destination);
@@ -458,15 +465,41 @@
     return true;
   }
 
+  function stopMusicClock() {
+    if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
+  }
   function startMusicClock() {
-    if (!music || musicTimer) return;
-    music.start();
+    if (!music || musicTimer || muted || hiddenPause) return;
+    if (!musicStarted) {
+      music.start();
+      musicStarted = true;
+    }
     const pump = function () {
-      if (!ctx || ctx.state !== 'running') return;
+      if (!ctx || ctx.state !== 'running' || muted) return;
       try { music.schedule(ctx.currentTime + 0.35); } catch (err) { /* keep the game running */ }
     };
     pump();
     musicTimer = setInterval(pump, 60);
+  }
+  function playSilentTap() {
+    if (!ctx || muted) return;
+    try {
+      const buf = ctx.createBuffer(1, 1, ctx.sampleRate || 44100);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const amp = ctx.createGain();
+      amp.gain.value = 0;
+      src.connect(amp);
+      amp.connect(ctx.destination);
+      src.start(0);
+      src.stop(ctx.currentTime + 0.02);
+    } catch (err) { /* ignore */ }
+  }
+  function onStateChange() {
+    if (!ctx || muted) return;
+    if (ctx.state === 'interrupted' || ctx.state === 'suspended') {
+      if (!document.hidden) pendingUnlock = true;
+    }
   }
 
   function safeResume() {
@@ -486,11 +519,12 @@
     if (suspendTimer) { clearTimeout(suspendTimer); suspendTimer = null; }
     if (muted) {
       master.gain.setTargetAtTime(0, ctx.currentTime, 0.03);
-      // Fully idle the audio thread while muted (saves battery); unmute is a tap, so resume is allowed.
+      stopMusicClock();
       suspendTimer = setTimeout(safeSuspend, 250);
     } else {
       safeResume();
       master.gain.setTargetAtTime(0.8, ctx.currentTime, 0.03);
+      if (started) startMusicClock();
     }
   }
 
@@ -530,8 +564,14 @@
   }
 
   function unlock() {
+    try {
+      const session = navigator.audioSession;
+      if (session && typeof session.type === 'string') session.type = 'ambient';
+    } catch (err) { /* older browsers */ }
     if (!ensure()) return;
     hiddenPause = false;
+    pendingUnlock = false;
+    playSilentTap();
     safeResume();
     if (!started) {
       started = true;
@@ -543,6 +583,11 @@
   function tick(speed, turbo, driveOn) {
     if (!ctx) return;
     const t = ctx.currentTime;
+    if (t - tickAt < 0.05 && Math.abs(speed - tickSpeed) < 10 && turbo === tickTurbo && driveOn === tickDrive) return;
+    tickAt = t;
+    tickSpeed = speed;
+    tickTurbo = !!turbo;
+    tickDrive = !!driveOn;
     const norm = Math.max(0, Math.min(1, speed / 980));
     engine.frequency.setTargetAtTime(46 + norm * 84 + (turbo ? 18 : 0), t, 0.05);
     engineFilter.frequency.setTargetAtTime(200 + norm * 1500 + (turbo ? 800 : 0), t, 0.06);
@@ -629,11 +674,14 @@
     },
     suspend: function () {
       hiddenPause = true;
+      stopMusicClock();
       safeSuspend();
     },
     resumeCtx: function () {
       hiddenPause = false;
       safeResume();
+      if (ctx && ctx.state !== 'running') pendingUnlock = true;
+      if (started && !muted) startMusicClock();
     },
     get hiddenPaused() { return hiddenPause; },
   };

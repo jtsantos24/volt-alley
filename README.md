@@ -23,14 +23,19 @@ Then open [http://127.0.0.1:8741](http://127.0.0.1:8741) and turn the window sid
 
 ## Ride
 
-- **Gas** — the big right pedal. Hold to build speed. Release and you coast. The wheels follow the hills. Steep crests launch you.
-- **Brake** — the big left pedal scrubs speed on the ground. In the air it leans the nose back. The small **FWD** button leans forward.
+- **Gas** — hold the big right pedal to go. Let go to slow down. The wheels follow the hills. Steep crests launch you.
+- **Lanes** — three decks. Tap ▲ or ▼ for one lane. Keys: Up or W, Down or X. Tunnels allow hops. A ring locks you to the middle lane.
+- **Lean** — in the air, BACK lifts the nose and FWD drops it.
 - **Boost** — the round button beside the gas pedal. More speed, but the core heats. A full heat dial locks boost until it cools. Cyan pads reset heat.
-- **Rivals** — NYX, VEX, and ION share the line. The badge is your place. The top bar is the pack. The meter on the right is the distance to the next marker.
+- **Rivals** — NYX, VEX, and ION ride the lanes. Closing on a rival's rear wheel in your lane is a fault and you respawn in place. A red tail light and an outlined ! show first. A rival running into you does not fault you.
+- **Tuned** — Stock off skips records, stars, ghosts, and unlocks. The maps screen says TUNED: NO RECORDS OR UNLOCKS.
+- **Run log** — each finish is kept on this phone (the last 60). COPY RUN on the results screen copies that JSON. A service-worker update during a race, the countdown, pause, or help does not reload. The new cache applies the next time you land on the title or the maps screen.
+- **Stars** — the shipped 3-star / 2-star times are the v12 table (Nite Pier 23/30, Amp Spine 29/36, Static Cut 37/46, Void Well 31/39, Ash Veil 40/50). Final numbers wait on a real-iPhone playtest. `tools/star-retime.js` is for those human runs only. It is not part of the game and it does not take autopilot times. A finish never lowers stars you already have.
+- **Debug** — `?debug=1` writes a run-log row with `debug: true` and shows DEBUG RUN · NOT SAVED. It does not keep a best time, stars, coins, an unlock, or a ghost.
 - **Coins** — glowing chips on the route. The total stays in `localStorage`.
 - **Tricks** — a clean landing pays time off the clock: 0.5s per flip, an extra 0.5s for two or more flips, and another 0.5s when you were in the air at least 0.65s. You also get a short speed boost and some heat back. A hard or crashed landing pays nothing. A crash sends you back to the last checkpoint. The clock keeps running through the tumble.
 - **Gates** — low barriers and glowing beams have to be jumped. Rocks on the ground scrape speed.
-- **Keyboard** — `D`, Right, or Space gas. `S` brake. Shift boost. `A`, Left, or Up leans back. `Q` or Down leans forward. `P` pauses.
+- **Keyboard** — `D`, Right, or Space gas. Up or `W`, and Down or `X`, change lane. `A` or Left leans back. `Q` or `Z` leans forward. Shift boost. `P` pauses.
 
 Pick a map from the title screen. Nite Pier is open first. Finishing a map unlocks the next. Ash Veil also opens if you hold 9 stars. The Garage spends coins on Core Vent, Arc Spring, and Drive Coil. Wear a shell from the stars you have earned. Leave Stock on if the time should count toward stars.
 
@@ -55,14 +60,14 @@ Each map has its own best time, 3-star target, and a best-time ghost. A crash se
 | `js/audio.js` | Procedural engine and synth score |
 | `fonts/nunito-latin-800.woff2` | Bundled Nunito ExtraBold (SIL OFL) |
 | `fonts/Nunito-OFL.txt` | Nunito license |
-| `sw.js` | Cache-first service worker (`volt-alley-v11-1`) |
+| `sw.js` | Cache-first service worker (`volt-alley-v13rc7`) |
 | `manifest.json` | Home-screen install |
 | `icons/icon-180.png` | Apple touch icon |
 | `icons/icon-192.png` | Manifest icon |
 | `icons/icon-512.png` | Manifest / maskable icon |
 
-Graphics are drawn on the canvas. Audio is Web Audio. Nothing is loaded from a CDN.
+Graphics are drawn on the canvas. Each map has its own background: Nite Pier is a harbour, Amp Spine is a concert district, Static Cut is a storm quarry, Void Well is a violet ring, and Ash Veil is a volcano. Only one background is kept in memory. The bike is an original angular fairing with cached neon rims, rim-light trails, and spark streaks. Glow is stamped from small offscreen sprites, so the race loop does not call shadowBlur. Audio is Web Audio. Nothing is loaded from a CDN.
 
 ## Updating an installed copy
 
-The service worker is cache-first under the name `volt-alley-v11-1` in `sw.js`. Shell paints unlock with stars. Core Vent, Arc Spring, and Drive Coil are bought with coins. Turn Stock on before a run if you want the time to count for stars. When you change the game, bump that name and add any new file to the precache list. The next online launch activates the new worker and reloads. The title shows **UPDATED**, then **OFFLINE READY**. A race that is already running is left alone until the next launch.
+The service worker is cache-first under the name `volt-alley-v13rc7` in `sw.js`. Shell paints unlock with stars. Core Vent, Arc Spring, and Drive Coil are bought with coins. Turn Stock on before a run if you want the time to count for stars. When you change the game, bump that name and add any new file to the precache list. The next online launch activates the new worker. The title shows **UPDATED**, then **OFFLINE READY**. If that activation happens during play, the countdown, pause, or help, the page stays up. The reload waits until the next time the title or the maps screen opens.
