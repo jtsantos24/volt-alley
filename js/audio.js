@@ -412,6 +412,11 @@
   let musicStarted = false;
   let suspendTimer = null;
   let tickAt = 0;
+  let fieldOsc = null;
+  let fieldGain = null;
+  let fieldAt = 0;
+  let fieldK = -1;
+  let fieldSpeed = -1;
   let tickSpeed = -1;
   let tickTurbo = false;
   let tickDrive = false;
@@ -451,6 +456,15 @@
     sub.connect(subGain);
     subGain.connect(sfxBus);
     sub.start();
+
+    fieldOsc = ctx.createOscillator();
+    fieldOsc.type = 'sine';
+    fieldOsc.frequency.value = 110;
+    fieldGain = ctx.createGain();
+    fieldGain.gain.value = 0;
+    fieldOsc.connect(fieldGain);
+    fieldGain.connect(sfxBus);
+    fieldOsc.start();
 
     const n = Math.floor(ctx.sampleRate * 1.2);
     noiseBuf = ctx.createBuffer(1, n, ctx.sampleRate);
@@ -630,6 +644,27 @@
     },
     unlock: unlock,
     tick: tick,
+    field: function (k, speed) {
+      if (!ctx || !fieldGain || !fieldOsc) return;
+      const t = ctx.currentTime;
+      const on = k > 0 && !muted;
+      const nextK = on ? k : 0;
+      const kChanged = nextK !== fieldK;
+      if (!kChanged && t - fieldAt < 0.05) return;
+      if (fieldK > 0 && nextK === 0) blip(220, 0.06, 'sine', 0.03, 140);
+      fieldAt = t;
+      fieldSpeed = speed;
+      fieldK = nextK;
+      const f = 110 * (0.6 + 0.4 * Math.max(0, speed) / 720);
+      fieldOsc.frequency.setTargetAtTime(f, t, 0.05);
+      fieldGain.gain.setTargetAtTime(on ? Math.min(0.05, 0.018 * k) : 0, t, on ? 0.06 : 0.12);
+    },
+    pad: function () {
+      blip(180, 0.14, 'sine', 0.04, 440);
+    },
+    leanTick: function () {
+      blip(990, 0.045, 'square', 0.028, 1320);
+    },
     scene: setScene,
     renderPreview: renderPreview,
     get musicVoices() { return music ? music.voices : 0; },

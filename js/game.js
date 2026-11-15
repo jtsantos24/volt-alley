@@ -36,7 +36,9 @@
     heatLock: 0.11,
     heatClear: 0.28,
     launchMin: 200,
+    padTime: 0.9,
   };
+  TUNE.rivalMax = 0.95 * TUNE.turboSpeed;
 
   const REWARD = {
     flip: 0.5,
@@ -103,7 +105,7 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').match
   let best = null;
   let coinBank = 0;
   let coinsDirty = false;
-  const runStats = { saved: 0, hops: 0, blocksSuffered: 0, scrapes: 0, padVisits: 0, overheats: 0, flips: 0, faults: { gate: 0, bar: 0, ceiling: 0, landing: 0, wall: 0, rear: 0 } };
+  const runStats = { saved: 0, hops: 0, blocksSuffered: 0, scrapes: 0, padVisits: 0, overheats: 0, flips: 0, dragDist: 0, faults: { gate: 0, bar: 0, ceiling: 0, landing: 0, wall: 0, rear: 0 } };
   const fpsHist = new Uint16Array(64);
   let fpsSamples = 0;
   let richTime = 0;
@@ -183,6 +185,15 @@ let raceTime = 0;
     ringBack: 0,
     wasBoost: false,
     boostArm: 0,
+    padT: 0,
+    inDrag: 0,
+    guardLanding: false,
+    rivalImmune: 0,
+    crashCause: '',
+    leanFlight: false,
+    leanAnnounced: 0,
+    dragRipple: 0,
+    dragExit: 0,
     y: 0,
     vy: 0,
     pitch: 0,
@@ -414,6 +425,13 @@ function buildTrack(mapId) {
     bike.vy = vy;
     bike.y = Math.max(bike.y, bike.prevH);
     bike.airTime = 0;
+    bike.leanFlight = false;
+    if (track && track.leanLips) {
+      const lips = track.leanLips;
+      for (let li = 0; li < lips.length; li++) {
+        if (Math.abs(lips[li].lip - bike.x) < 90) { bike.leanFlight = true; break; }
+      }
+    }
     bike.pitch = Math.atan(clamp(slope, 0, 1.2));
     bike.takeoffPitch = bike.pitch;
     bike.flips = 0;
@@ -496,7 +514,12 @@ function buildTrack(mapId) {
         if (item.x > nextX && item.x < nextX + 160) blocked = true;
       }
       if (!blocked) {
-        for (let d = 0; d <= 640; d += 80) {
+        let horizon = (track && track.finishX) || (nextX + 640);
+        const cps = (track && track.checkpoints) || [];
+        for (let cpi = 0; cpi < cps.length; cpi++) {
+          if (cps[cpi] > nextX + 80) { horizon = cps[cpi]; break; }
+        }
+        for (let d = 0; d <= horizon - nextX; d += 80) {
           if (laneClosed(nextX + d, lane)) blocked = true;
         }
         for (let h = 0; h < hazards.length; h++) {
@@ -504,7 +527,7 @@ function buildTrack(mapId) {
           if (item.kind !== 'wall') continue;
           const itemLane = item.lane == null ? 'all' : item.lane;
           if (itemLane !== 'all' && itemLane !== lane) continue;
-          if (item.x > nextX && item.x <= nextX + 640) blocked = true;
+          if (item.x > nextX && item.x <= horizon) blocked = true;
         }
       }
       if (!blocked) return lane;
@@ -538,6 +561,10 @@ function buildTrack(mapId) {
     bike.air = false;
     bike.pitch = Math.atan(clamp(g.slope, -1.2, 1.2));
     bike.speed = 420;
+    bike.padT = 0;
+    bike.inDrag = 0;
+    bike.leanFlight = false;
+    bike.leanAnnounced = 0;
     bike.prevH = g.h;
     bike.prevSlope = g.slope;
     bike.airTime = 0;
@@ -696,11 +723,40 @@ function buildTrack(mapId) {
     return false;
   }
 
+  function nyxTime(dist, pace, phase, cap) {
+    let x = 0;
+    let t = 0;
+    const dt = 1 / 120;
+    while (x < dist && t < 90) {
+      const wobble = 0.9 + 0.1 * Math.sin(t * 0.85 + phase);
+      let speed = pace * wobble;
+      if (speed > cap) speed = cap;
+      x += speed * dt;
+      t += dt;
+    }
+    return t;
+  }
+
+  function nyxPace(dist, target, phase, cap) {
+    const floor = dist / cap;
+    let lo = 200;
+    let hi = cap / 0.8 + 40;
+    if (target <= floor) return hi;
+    for (let n = 0; n < 28; n++) {
+      const mid = (lo + hi) * 0.5;
+      if (nyxTime(dist, mid, phase, cap) > target) lo = mid;
+      else hi = mid;
+    }
+    return (lo + hi) * 0.5;
+  }
+
   function placeRivals() {
     const times = currentMap && currentMap.rivalT;
     const starts = [980, 680, 400];
+    const cap = TUNE.rivalMax;
     if (times && times.length === 3) {
-      for (let i = 0; i < 3; i++) rivals[i].pace = (finishX - starts[i]) / (0.9 * Math.max(8, times[i]));
+      rivals[0].pace = nyxPace(finishX - starts[0], times[0], rivals[0].phase || 0, cap);
+      for (let i = 1; i < 3; i++) rivals[i].pace = (finishX - starts[i]) / (0.9 * Math.max(8, times[i]));
     } else {
       const target = (currentMap && currentMap.star2) || 60;
       const base = finishX / Math.max(36, target);
@@ -763,6 +819,9 @@ function buildTrack(mapId) {
     bike.rivalImmune = 0;
     bike.looping = null;
     bike.guardLanding = false;
+    bike.padT = 0;
+    bike.inDrag = 0;
+    bike.leanFlight = false;
     bike.speed = spec.speed == null ? 480 : spec.speed;
     bike.debugSpeed = bike.speed;
     bike.debugLock = spec.lock !== false;
@@ -997,6 +1056,20 @@ function buildTrack(mapId) {
     queuedMergeWall = 0;
     queuedMergeLane = -1;
   }
+  function nextLeanLip() {
+    const lips = track && track.leanLips;
+    if (!lips) return null;
+    const look = Math.max(960, (bike.speed || 0) * 1.25);
+    let best = null;
+    for (let i = 0; i < lips.length; i++) {
+      const item = lips[i];
+      if (item.lip <= bike.x) continue;
+      if (item.lip - bike.x > look) continue;
+      if (!best || item.lip < best.lip) best = item;
+    }
+    return best;
+  }
+
   function updateCallout() {
     const el = $('callout');
     if (phase !== 'play' || bike.crashing || portrait) {
@@ -1052,8 +1125,8 @@ function buildTrack(mapId) {
     if (jumpNear) {
       if (bike.air) {
         const nose = wrapAngle(bike.pitch);
-        if (nose > TUNE.cleanAngle) text = 'LEAN FWD';
-        else if (nose < -TUNE.cleanAngle) text = 'LEAN BACK';
+        if (nose > TUNE.hardAngle) text = bike.leanFlight ? 'LEAN FWD · TAP' : 'LEAN FWD';
+        else if (nose < -TUNE.hardAngle) text = 'LEAN BACK';
         else text = 'LEVEL';
         kind = text === 'LEVEL' ? 'good' : 'bad';
       } else {
@@ -1063,6 +1136,14 @@ function buildTrack(mapId) {
     } else if (queuedMerge && bike.x < queuedMergeWall && mine === queuedMergeLane) {
       text = queuedMerge;
       kind = 'bad';
+    } else if (!bike.air && nextLeanLip()) {
+      const lean = nextLeanLip();
+      text = 'LEAN ▸';
+      kind = 'bad';
+      if (bike.leanAnnounced !== lean.lip) {
+        bike.leanAnnounced = lean.lip;
+        try { audio.leanTick(); } catch (err) { /* optional */ }
+      }
     } else if (splitText) {
       text = splitText;
       kind = 'bad';
@@ -1073,8 +1154,8 @@ function buildTrack(mapId) {
     }
     if (!text && bike.air && bike.airTime > 0.12) {
       const nose = wrapAngle(bike.pitch);
-      if (nose > TUNE.cleanAngle) text = 'LEAN FWD';
-      else if (nose < -TUNE.cleanAngle) text = 'LEAN BACK';
+      if (nose > TUNE.hardAngle) text = bike.leanFlight ? 'LEAN FWD · TAP' : 'LEAN FWD';
+      else if (nose < -TUNE.hardAngle) text = 'LEAN BACK';
       else text = 'LEVEL';
       kind = text === 'LEVEL' ? 'good' : 'bad';
     }
@@ -1161,6 +1242,7 @@ function buildTrack(mapId) {
       if (r.doneAt != null) continue;
       if (r.hold) {
         r.speed = r.pace || 0;
+        if (r.speed > TUNE.rivalMax) r.speed = TUNE.rivalMax;
         r.x += r.speed * dt;
         r.laneF = r.lane || 0;
         r.hopT = 1;
@@ -1177,6 +1259,7 @@ function buildTrack(mapId) {
       const wobble = 0.9 + 0.1 * Math.sin(time * 0.85 + r.phase);
       const paceMul = (currentMap && currentMap.pace) || 1;
       r.speed = r.pace * paceMul * wobble * (r.stallT > 0 ? 0.4 : 1);
+      if (r.speed > TUNE.rivalMax) r.speed = TUNE.rivalMax;
       r.x += r.speed * dt;
       if (r.x >= finishX) {
         r.x = finishX;
@@ -1462,6 +1545,7 @@ function buildTrack(mapId) {
     runStats.scrapes = 0;
     runStats.padVisits = 0;
     runStats.overheats = 0;
+    runStats.dragDist = 0;
     fpsHist.fill(0);
     fpsSamples = 0;
     richTime = 0;
@@ -1537,7 +1621,7 @@ function buildTrack(mapId) {
     for (let i = 0; i < cpN; i++) splitsCp.push(cpTimes[i]);
     const faults = runStats.faults;
     lastRun = {
-      v: 13,
+      v: 14,
       map: currentMap ? currentMap.id : '',
       mode: 'campaign',
       date: new Date().toISOString(),
@@ -1563,6 +1647,7 @@ function buildTrack(mapId) {
       splitsCp: splitsCp,
       blocks: rows,
     };
+    if (debugOn) lastRun.dragDist = runStats.dragDist;
     runOpen = false;
     runLog.push(lastRun);
     while (runLog.length > 60) runLog.shift();
@@ -1620,11 +1705,14 @@ function buildTrack(mapId) {
       bike.heat = Math.max(0, bike.heat - TUNE.heatOff * (tuningOn('vent') ? 1.28 : 1) * dt);
     }
 
-    const cap = bike.overheated ? TUNE.heatSpeed : (boosting ? TUNE.turboSpeed : TUNE.maxSpeed);
+    if (bike.padT > 0) bike.padT -= dt;
+    const padOn = bike.padT > 0;
+    let cap = bike.overheated ? TUNE.heatSpeed : (boosting ? TUNE.turboSpeed : TUNE.maxSpeed);
+    if (padOn) cap = TUNE.turboSpeed;
     if (bike.speed > cap) {
       bike.speed += (cap - bike.speed) * Math.min(1, dt * 4.5);
-    } else if (thrusting) {
-      const a = (boosting ? TUNE.turboAccel : TUNE.accel) * (bike.air ? 0.45 : 1);
+    } else if (thrusting || padOn) {
+      const a = ((boosting || padOn) ? TUNE.turboAccel : TUNE.accel) * (bike.air ? 0.45 : 1);
       bike.speed += a * dt;
       if (bike.speed > cap) bike.speed = cap;
     } else {
@@ -1637,6 +1725,34 @@ function buildTrack(mapId) {
       bike.speed += Math.max(0, -climb) * 46 * dt;
     }
     bike.speed -= bike.speed * TUNE.drag * dt;
+    bike.inDrag = 0;
+    if (!bike.air && !bike.looping && track && track.drags) {
+      const dl = hitLaneBike();
+      const drags = track.drags;
+      for (let di = 0; di < drags.length; di++) {
+        const d = drags[di];
+        if (bike.x >= d.x0 && bike.x <= d.x1 && laneMatches(d.lane, dl)) {
+          bike.speed -= bike.speed * d.k * dt;
+          bike.inDrag = d.k;
+          if (debugOn) runStats.dragDist += bike.speed * dt;
+          break;
+        }
+      }
+    }
+    if (!bike.air && !bike.looping && track && track.boosts) {
+      const dl = hitLaneBike();
+      const pads = track.boosts;
+      for (let pi = 0; pi < pads.length; pi++) {
+        const p = pads[pi];
+        if (bike.x >= p.x && bike.x <= p.x + p.len && laneMatches(p.lane, dl)) {
+          if (!(bike.padT > 0)) {
+            try { audio.pad(); } catch (err) { /* optional */ }
+          }
+          bike.padT = TUNE.padTime;
+          break;
+        }
+      }
+    }
     if (bike.speed < 0) bike.speed = 0;
     if (debugOn && bike.debugLock) bike.speed = bike.debugSpeed;
     if (bike.speed > topSpeed) topSpeed = bike.speed;
@@ -1725,7 +1841,10 @@ function buildTrack(mapId) {
     spawnT += dt;
     if (spawnT > 0.04 && bike.speed > 180 && !bike.crashing && !bike.air) {
       spawnT = 0;
-      if (fxRich()) burst(bike.x - 28, bike.y + 4, boosting ? '#ff4ad0' : ((track && track.accent) || '#5ef6ff'), 1, 0.22);
+      if (fxRich()) {
+        const spark = bike.inDrag ? PAL.drag : (boosting ? '#ff4ad0' : ((track && track.accent) || '#5ef6ff'));
+        burst(bike.x - 28, bike.y + 4, spark, 1, 0.22);
+      }
     }
     if (bike.speed > 240 && !bike.crashing) {
       const prev = trLen ? trX[(trHead + TR_N - 1) % TR_N] : -1e9;
@@ -1834,6 +1953,8 @@ function updateCountdown(dt) {
     wood0: '#0c0616', wood1: '#1a1034', wood2: '#2a1850', wood3: '#5ef6ff', wood4: '#ff8ab8', cream: '#ffe4f4',
     stone0: '#100818', stone1: '#241444', stone2: '#32185a', stone3: '#4a2878', stone4: '#6a4098',
     cyan: '#5ef6ff', mag: '#ff4ad0', amber: '#ffb347', lamp: '#ffe08a', orange: '#ff8c42',
+    drag: '#3ce6b0',
+    boost: '#fff1a8',
   };
 
   let bg = null;
@@ -3316,17 +3437,145 @@ function updateCountdown(dt) {
     }
   }
 
+  const LEAN_LABEL = 'LEAN \u25b8';
+
+  function bandStrip(band, i0, i1) {
+    const top = -band * laneGap;
+    ctx.beginPath();
+    ctx.moveTo(gpX[i0], gpY[i0] + top);
+    for (let i = i0 + 1; i <= i1; i++) ctx.lineTo(gpX[i], gpY[i] + top);
+    for (let i = i1; i >= i0; i--) ctx.lineTo(gpX[i], gpY[i] + top + laneGap - 2);
+    ctx.closePath();
+  }
+
+  function spanIdx(x0, x1) {
+    const gx0 = cameraX - 40;
+    let i0 = Math.ceil((x0 - gx0) / 10);
+    let i1 = Math.floor((x1 - gx0) / 10);
+    if (i0 < 0) i0 = 0;
+    if (i1 > gpN - 1) i1 = gpN - 1;
+    return i1 > i0 ? (i0 + i1 * 100000) : -1;
+  }
+
+  function drawFields(band) {
+    const drags = track && track.drags;
+    if (!drags || gpN < 2) return;
+    const st = track.style || { spacing: 40, lines: 2, alpha: 0.3, hz: 0, amp: 0 };
+    const motion = !reduceMotion;
+    for (let d = 0; d < drags.length; d++) {
+      const f = drags[d];
+      const lane = f.lane == null ? 'all' : f.lane;
+      if (lane !== 'all' && lane !== band) continue;
+      if (f.x1 < cameraX - 40 || f.x0 > cameraX + W + 40) continue;
+      const packed = spanIdx(f.x0, f.x1);
+      if (packed < 0) continue;
+      const i0 = packed % 100000;
+      const i1 = (packed / 100000) | 0;
+      bandStrip(band, i0, i1);
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = PAL.drag;
+      ctx.fill();
+      ctx.globalAlpha = 0.85;
+      ctx.beginPath();
+      ctx.moveTo(gpX[i0], gpY[i0] - band * laneGap);
+      for (let i = i0 + 1; i <= i1; i++) ctx.lineTo(gpX[i], gpY[i] - band * laneGap);
+      ctx.strokeStyle = PAL.drag;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      if (fxRich() && motion && st.lines) {
+        const pulse = st.hz ? (1 + Math.sin(time * st.hz * 6.2832) * st.amp) : 1;
+        ctx.globalAlpha = st.alpha * pulse;
+        ctx.strokeStyle = PAL.drag;
+        const step = Math.max(2, (i1 - i0) / st.lines);
+        for (let n = 1; n <= st.lines; n++) {
+          const i = i0 + ((n * step) | 0);
+          if (i >= i1) break;
+          const bow = motion ? Math.sin(time * 2 + n) * 6 : 0;
+          ctx.beginPath();
+          ctx.moveTo(gpX[i], gpY[i] - band * laneGap + 3);
+          ctx.lineTo(gpX[i] - bow, gpY[i] - band * laneGap + laneGap * 0.5);
+          ctx.lineTo(gpX[i], gpY[i] - band * laneGap + laneGap - 4);
+          ctx.stroke();
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawBoosts(band) {
+    const pads = track && track.boosts;
+    if (!pads || gpN < 2) return;
+    for (let p = 0; p < pads.length; p++) {
+      const pad = pads[p];
+      const lane = pad.lane == null ? 'all' : pad.lane;
+      if (lane !== 'all' && lane !== band) continue;
+      const x1 = pad.x + pad.len;
+      if (x1 < cameraX - 40 || pad.x > cameraX + W + 40) continue;
+      const packed = spanIdx(pad.x, x1);
+      if (packed < 0) continue;
+      const i0 = packed % 100000;
+      const i1 = (packed / 100000) | 0;
+      bandStrip(band, i0, i1);
+      ctx.globalAlpha = 0.34;
+      ctx.fillStyle = PAL.boost;
+      ctx.fill();
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = PAL.boost;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (band !== 0) return;
+    ctx.font = '800 11px Nunito, sans-serif';
+    const arrows = track && track.arrows;
+    if (arrows) {
+      ctx.fillStyle = PAL.lamp;
+      for (let a = 0; a < arrows.length; a++) {
+        const ar = arrows[a];
+        if (ar.x1 < cameraX || ar.x0 > cameraX + W) continue;
+        for (let n = 0; n < 3; n++) {
+          const x = ar.x0 + (ar.x1 - ar.x0) * ((n + 1) / 4);
+          const s = toScreen(x, queryGround(x).h);
+          ctx.fillText('\u25b8', s.x, s.y - laneGap - 6);
+        }
+      }
+    }
+    const lips = track && track.leanLips;
+    if (lips) {
+      ctx.fillStyle = PAL.lamp;
+      ctx.font = '800 11px Nunito, sans-serif';
+      for (let i = 0; i < lips.length; i++) {
+        const sign = lips[i].signX;
+        if (sign < cameraX - 20 || sign > cameraX + W + 20) continue;
+        const s = toScreen(sign, queryGround(sign).h);
+        ctx.fillRect(s.x - 2, s.y - 2 * laneGap - 18, 3, 2 * laneGap + 18);
+        ctx.fillText(LEAN_LABEL, s.x + 6, s.y - laneGap);
+      }
+    }
+  }
+
   function drawCoins(band) {
     const coins = track.coins || [];
     for (let i = 0; i < coins.length; i++) {
       const c = coins[i];
       if (c.got || c.x < cameraX - 40 || c.x > cameraX + W + 40) continue;
       const lane = c.lane == null ? 'all' : c.lane;
-      if (lane !== 'all' && lane !== band) continue;
-      const dy = -((lane === 'all' ? band : lane) * laneGap);
+      if (lane === 'all') {
+        if (band !== 0) continue;
+      } else if (lane !== band) continue;
       const s = toScreen(c.x, queryGround(c.x).h + c.lift);
       const sx = s.x;
-      const sy = s.y + dy;
+      const sy = s.y - (lane === 'all' ? laneGap : lane * laneGap);
+      if (lane === 'all') {
+        ctx.strokeStyle = PAL.cyan;
+        ctx.globalAlpha = 0.35;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx, s.y - 2 * laneGap);
+        ctx.lineTo(sx, s.y);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
       if (fxRich()) {
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
@@ -3505,12 +3754,18 @@ function updateCountdown(dt) {
     drawBackground(ctx, bg, cameraX, time, W, H, fxRich(), bgState());
     if (phase === 'title' || phase === 'help') {
       drawDeck(2);
+      drawFields(2);
+      drawBoosts(2);
       drawCoins(2);
       drawHazards(2);
       drawDeck(1);
+      drawFields(1);
+      drawBoosts(1);
       drawCoins(1);
       drawHazards(1);
       drawGround();
+      drawFields(0);
+      drawBoosts(0);
       drawCoins(0);
       drawHazards(0);
       drawDressing();
@@ -3518,14 +3773,20 @@ function updateCountdown(dt) {
     } else {
       const boosting = readInput().turbo && !bike.overheated && phase === 'play';
       drawDeck(2);
+      drawFields(2);
+      drawBoosts(2);
       drawCoins(2);
       drawHazards(2);
       drawBand(2, boosting);
       drawDeck(1);
+      drawFields(1);
+      drawBoosts(1);
       drawCoins(1);
       drawHazards(1);
       drawBand(1, boosting);
       drawGround();
+      drawFields(0);
+      drawBoosts(0);
       drawCoins(0);
       drawHazards(0);
       drawDressing();
@@ -3709,6 +3970,15 @@ function updateCountdown(dt) {
     bike.laneQueue = 0;
     bike.laneGrace = 0;
     bike.airLanePress = 0;
+    bike.wasBoost = false;
+    bike.boostArm = 0;
+    bike.padT = 0;
+    bike.inDrag = 0;
+    bike.guardLanding = false;
+    bike.rivalImmune = 0;
+    bike.crashCause = '';
+    bike.leanFlight = false;
+    bike.leanAnnounced = 0;
     clearMergeQueue();
     bike.ringMode = 0;
     richFlips = 0;
@@ -3783,6 +4053,7 @@ function updateCountdown(dt) {
     if (currentMap && raceTime <= currentMap.star3) stars = 3;
     const coinTotal = (track.coins || []).length;
     const allCoins = coinTotal > 0 && runCoins >= coinTotal;
+    lastResult = { stars: stars, circuit: allCoins, clean: crashes === 0, time: raceTime, crashes: crashes, coins: runCoins, coinTotal: coinTotal };
     if (medalRun) {
       mapProgress[id] = {
         best: record ? raceTime : prev.best,
@@ -3800,7 +4071,8 @@ function updateCountdown(dt) {
     setText($('result-kicker'), debugRun ? 'DEBUG RUN' : (!medalRun ? 'TUNED RUN' : (record ? 'NEW RECORD' : (stars >= 3 ? '3 STARS' : 'SECTOR CLEAR'))));
     setText($('result-time'), fmt(raceTime));
     setText($('result-best'), fmt(best));
-    setText($('result-stars'), debugRun ? 'DEBUG RUN · NOT SAVED' : ((!medalRun ? 'TUNED RUN · NO RECORDS OR UNLOCKS' : '') + (medalRun ? (stars + ' STAR' + (stars > 1 ? 'S' : '') + (allCoins ? ' · CIRCUIT' : '') + (crashes === 0 ? ' · CLEAN' : '')) : '')));
+    const provTag = currentMap && currentMap.provisional ? ' \u00b7 PROVISIONAL' : '';
+    setText($('result-stars'), debugRun ? 'DEBUG RUN · NOT SAVED' : ((!medalRun ? 'TUNED RUN · NO RECORDS OR UNLOCKS' : '') + (medalRun ? (stars + ' STAR' + (stars > 1 ? 'S' : '') + (allCoins ? ' · CIRCUIT' : '') + (crashes === 0 ? ' · CLEAN' : '') + provTag) : '')));
     setText($('result-run'), 'SAVED ' + runStats.saved.toFixed(1) + 's · HOPS ' + runStats.hops + ' · BLOCKS ' + runStats.blocksSuffered + ' · REAR ' + runStats.faults.rear);
     setText($('result-faults'), String(crashes));
     setText($('result-cleans'), String(cleans));
@@ -3912,7 +4184,9 @@ function updateCountdown(dt) {
       } else {
         card.children[3].textContent = rec.best == null ? 'NO TIME' : fmt(rec.best);
         card.children[4].textContent = starGlyph(rec.stars || 0);
-        card.children[5].textContent = medalText(rec);
+        const medal = medalText(rec);
+        const prov = m.provisional ? ('3\u2605 ' + m.star3 + ' \u00b7 2\u2605 ' + m.star2 + ' PROV') : '';
+        card.children[5].textContent = medal && prov ? (medal + ' \u00b7 ' + prov) : (medal || prov);
       }
     }
     paintTuned();
@@ -4540,6 +4814,7 @@ function updateCountdown(dt) {
       const inp = readInput();
       const fake = phase === 'countdown' ? rev * 420 : phase === 'title' || phase === 'help' ? 180 : bike.speed;
       audio.tick(fake, inp.turbo && phase === 'play' && !bike.overheated, drive && (inp.throttle || inp.turbo || bike.speed > 40));
+      audio.field(bike.inDrag || 0, bike.speed || 0);
       if (phase === 'play' || phase === 'countdown' || phase === 'pause') {
         const anchor = bike.speed > 760 ? 0.26 : 0.3;
         const target = (phase === 'pause' && pausedFrom === 'countdown' ? bike.x : bike.x) - W * anchor;
@@ -4569,7 +4844,55 @@ function updateCountdown(dt) {
     requestAnimationFrame(loop);
   }
 
+  const SCHEMA_KEY = 'volt-alley-schema';
+  const GHOST_IDS = ['nite-pier', 'amp-spine', 'static-cut', 'void-well', 'ash-veil'];
+  let tracksRebuilt = false;
+  let lastResult = null;
+
+  function migrateSave(store) {
+    const SCHEMA_KEY = 'volt-alley-schema';
+    const BEST_KEY = 'volt-alley-best';
+    const GHOST_IDS = ['nite-pier', 'amp-spine', 'static-cut', 'void-well', 'ash-veil'];
+    try {
+      if (Number(store.getItem(SCHEMA_KEY)) >= 14) return false;
+      let prior = store.getItem('volt-alley-maps') != null || store.getItem(BEST_KEY) != null;
+      if (!prior) {
+        for (let i = 0; i < GHOST_IDS.length; i++) {
+          if (store.getItem('volt-alley-ghost-' + GHOST_IDS[i]) != null) prior = true;
+        }
+      }
+      if (!prior) {
+        store.setItem(SCHEMA_KEY, '14');
+        return false;
+      }
+      let records = {};
+      try {
+        records = JSON.parse(store.getItem('volt-alley-maps') || '{}') || {};
+      } catch (err) {
+        records = {};
+      }
+      if (!records || typeof records !== 'object') records = {};
+      const next = {};
+      const keys = Object.keys(records);
+      for (let i = 0; i < keys.length; i++) {
+        const rec = records[keys[i]] || {};
+        let stars = rec.stars | 0;
+        if (stars < 0) stars = 0;
+        if (stars > 3) stars = 3;
+        next[keys[i]] = { best: null, stars: stars, clean: false, circuit: false };
+      }
+      store.setItem('volt-alley-maps', JSON.stringify(next));
+      for (let i = 0; i < GHOST_IDS.length; i++) store.removeItem('volt-alley-ghost-' + GHOST_IDS[i]);
+      store.removeItem(BEST_KEY);
+      store.setItem(SCHEMA_KEY, '14');
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
   function boot() {
+    tracksRebuilt = migrateSave(localStorage);
     loadRunLog();
     window.addEventListener('error', (e) => reportFault(e.message || 'unknown'));
     loadMapProgress();
@@ -4582,7 +4905,7 @@ function updateCountdown(dt) {
     try {
       if (localStorage.getItem(MUTE_KEY) === '1') audio.muted = true;
     } catch (err) { /* ignore */ }
-    setText($('title-best'), 'BEST ' + fmt(best));
+    setText($('title-best'), tracksRebuilt ? 'TRACKS REBUILT \u00b7 BESTS RESET \u00b7 STARS KEPT' : ('BEST ' + fmt(best)));
     setText($('title-coins'), 'COINS ' + coinBank);
     syncMute();
     initPool();
@@ -4666,11 +4989,15 @@ function updateCountdown(dt) {
         }
         return out;
       },
+      get padT() { return bike.padT || 0; },
+      get inDrag() { return bike.inDrag || 0; },
+      get leanLips() { return (track && track.leanLips) || []; },
+      get lastResult() { return lastResult; },
       get crashCause() { return bike.crashCause || ''; },
       get crashX() { return bike.crashX || 0; },
       get immune() { return bike.rivalImmune || 0; },
       get invuln() { return bike.invuln || 0; },
-      debug(spec) { return applyDebug(spec || {}); },
+      debug(spec) { if (!debugOn) return null; return applyDebug(spec || {}); },
       get callout() {
         const el = $('callout');
         return el ? el.textContent : '';
@@ -4680,6 +5007,7 @@ function updateCountdown(dt) {
       get bgBolt() { return bg && bg.bolt ? bg.bolt : 0; },
       get muted() { return bgMuted(); },
       tryReact() {
+        if (!debugOn) return null;
         if (!bg) return { flash: 0, cool: 0, bolt: 0 };
         bg.rx.flash = 0;
         bg.rx.cool = 0;
@@ -4695,14 +5023,22 @@ function updateCountdown(dt) {
         return { flash: bg.rx.flash || 0, cool: bg.rx.cool || 0, bolt: bg.bolt || 0 };
       },
       hold(gas, boost) {
+        if (!debugOn) return;
         touch.throttle = !!gas;
         touch.turbo = !!boost;
       },
+      lean(fwd) {
+        if (!debugOn) return;
+        touch.leanFwd = !!fwd;
+        if (fwd) touch.leanBack = false;
+      },
       tap(dir) {
+        if (!debugOn) return;
         if (dir > 0) touch.upPress = Math.min(2, touch.upPress + 1);
         else if (dir < 0) touch.downPress = Math.min(2, touch.downPress + 1);
       },
       step(n) {
+        if (!debugOn) return phase;
         const count = n > 0 ? n : 1;
         for (let i = 0; i < count; i++) {
           if (phase !== 'play') break;

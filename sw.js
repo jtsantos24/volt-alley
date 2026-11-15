@@ -2,7 +2,7 @@
    Bump CACHE when you ship new files so installed phones drop the old set. */
 'use strict';
 
-const CACHE = 'volt-alley-v13rc7';
+const CACHE = 'volt-alley-v14rc4';
 const ASSETS = [
   './',
   './index.html',
