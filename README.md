@@ -1,6 +1,6 @@
 # VOLT ALLEY
 
-A storm-lit futuristic hill race with five short maps. One line, a hot core, and landings that pay time back when you stick a trick.
+A storm-lit futuristic hill race with five short maps. One line, a hot core, and landings that pay time back when you stick a trick. Phase A rides the same three lanes: the arrows lean in the air, boost is a slide up on GAS, and the dial reads MPH.
 
 It is a static site with no build step and no network calls after the first load.
 
@@ -24,9 +24,9 @@ Then open [http://127.0.0.1:8741](http://127.0.0.1:8741) and turn the window sid
 ## Ride
 
 - **Gas** — hold the big right pedal to go. Let go to slow down. The wheels follow the hills. Steep crests launch you.
-- **Lanes** — three decks. Tap ▲ or ▼ for one lane. Keys: Up or W, Down or X. Tunnels allow hops. A ring locks you to the middle lane.
-- **Lean** — in the air, BACK lifts the nose and FWD drops it.
-- **Boost** — the round button beside the gas pedal. More speed, but the core heats. A full heat dial locks boost until it cools. Cyan pads reset heat.
+- **Lanes** — three decks. On the ground, tap ▲ or ▼ for one lane. Keys: Up or W, Down or X. Tunnels allow hops. A ring locks you to the middle lane.
+- **Lean** — in the air, those same arrows lean the bike. ▼ drops the nose. ▲ lifts it. A new press after takeoff starts a lean. A press you were already holding does not. A posted ramp needs one downward tap. Hold it and the nose overshoots.
+- **Boost** — hold GAS and slide up the pedal. GAS stays down the whole time. Slide back down to drop the boost and keep the gas. Lift to let go of both. The Garage, next to Stock and Haptics, can switch that to a double-tap, a BOOST button, or off. A full heat dial locks boost and the GAS pedal reads LOCK. Cyan pads still push you, even with boost off.
 - **Rivals** — NYX, VEX, and ION ride the lanes. Closing on a rival's rear wheel in your lane is a fault and you respawn in place. A red tail light and an outlined ! show first. A rival running into you does not fault you.
 - **Tuned** — Stock off skips records, stars, ghosts, and unlocks. The maps screen says TUNED: NO RECORDS OR UNLOCKS.
 - **Run log** — each finish is kept on this phone (the last 60). COPY RUN on the results screen copies that JSON. A service-worker update during a race, the countdown, pause, or help does not reload. The new cache applies the next time you land on the title or the maps screen.
@@ -34,7 +34,7 @@ Then open [http://127.0.0.1:8741](http://127.0.0.1:8741) and turn the window sid
 - **Debug** — `?debug=1` writes a run-log row with `debug: true` and shows DEBUG RUN · NOT SAVED. It does not keep a best time, stars, coins, an unlock, or a ghost.
 - **Coins** — glowing chips on the route. The total stays in `localStorage`.
 - **Tricks** — a clean landing pays time off the clock: 0.5s per flip, an extra 0.5s for two or more flips, and another 0.5s when you were in the air at least 0.65s. You also get a short speed boost and some heat back. A hard or crashed landing pays nothing. A crash sends you back to the last checkpoint. The clock keeps running through the tumble.
-- **Keyboard** — `D`, Right, or Space gas. Up or `W`, and Down or `X`, change lane. `A` or Left leans back. `Q` or `Z` leans forward. Shift boost. `P` pauses.
+- **Keyboard** — `D`, Right, or Space gas. Up or `W`, and Down or `X`, change lane on the ground. In the air, Up leans back and Down leans forward. `P` pauses. Shift boosts only while the Garage is on the BOOST button, or while `?debug=1` is open.
 
 Pick a map from the title screen. Nite Pier is open first. Finishing a map unlocks the next. Ash Veil also opens if you hold 9 stars. The Garage spends coins on Core Vent, Arc Spring, and Drive Coil. Wear a shell from the stars you have earned. Leave Stock on if the time should count toward stars.
 
@@ -59,7 +59,7 @@ Each map has its own best time, 3-star target, and a best-time ghost. A crash se
 | `js/audio.js` | Procedural engine and synth score |
 | `fonts/nunito-latin-800.woff2` | Bundled Nunito ExtraBold (SIL OFL) |
 | `fonts/Nunito-OFL.txt` | Nunito license |
-| `sw.js` | Cache-first service worker (`volt-alley-v14rc4`) |
+| `sw.js` | Cache-first service worker (`volt-alley-v15a-rc3`) |
 | `manifest.json` | Home-screen install |
 | `icons/icon-180.png` | Apple touch icon |
 | `icons/icon-192.png` | Manifest icon |
@@ -69,4 +69,4 @@ Graphics are drawn on the canvas. Each map has its own background: Nite Pier is 
 
 ## Updating an installed copy
 
-The service worker is cache-first under the name `volt-alley-v14rc4` in `sw.js`. Shell paints unlock with stars. Core Vent, Arc Spring, and Drive Coil are bought with coins. Turn Stock on before a run if you want the time to count for stars. When you change the game, bump that name and add any new file to the precache list. The next online launch activates the new worker. The title shows **UPDATED**, then **OFFLINE READY**. If that activation happens during play, the countdown, pause, or help, the page stays up. The reload waits until the next time the title or the maps screen opens.
+The service worker is cache-first under the name `volt-alley-v15a-rc3` in `sw.js`. Shell paints unlock with stars. Core Vent, Arc Spring, and Drive Coil are bought with coins. Turn Stock on before a run if you want the time to count for stars. When you change the game, bump that name and add any new file to the precache list. The next online launch activates the new worker. The title shows **UPDATED**, then **OFFLINE READY**. If that activation happens during play, the countdown, pause, or help, the page stays up. The reload waits until the next time the title or the maps screen opens.

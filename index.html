@@ -44,7 +44,7 @@
           <div class="needle" id="speed-needle"></div>
           <b id="speed-val">0</b>
           <span id="lane-pip" aria-hidden="true"><i></i><i></i><i></i></span>
-          <small>KM/H</small>
+          <small>MPH</small>
         </div>
         <div id="attitude" aria-hidden="true">
           <div id="horizon-line"></div>
@@ -65,10 +65,8 @@
         <button id="btn-lane-up" class="lane-btn" type="button" aria-label="Lane up">▲</button>
         <button id="btn-lane-down" class="lane-btn" type="button" aria-label="Lane down">▼</button>
       </div>
-      <button id="btn-lean-back" class="round lean" type="button">BACK</button>
-      <button id="btn-lean-fwd" class="round lean" type="button">FWD</button>
       <button id="btn-turbo" class="round boost" type="button">BOOST</button>
-      <button id="btn-throttle" class="pedal gas" type="button"><span class="pedal-title">GAS</span></button>
+      <button id="btn-throttle" class="pedal gas" type="button"><span class="pedal-title">GAS</span><span id="gas-sub" class="pedal-sub"></span></button>
     </div>
 
     <div id="countdown" class="hidden" aria-hidden="true"></div>
@@ -101,17 +99,17 @@
         </div>
         <div class="help-grid">
           <p><b>GAS</b> Hold the big right pedal to go. Let go to slow down.</p>
-          <p><b>LANES</b> Tap ▲ or ▼ to move one lane. Keys: Up/W, Down/X.</p>
-          <p><b>LEAN</b> In the air, BACK lifts the nose, FWD drops it.</p>
-          <p><b>BOOST</b> Hold for speed. Watch the heat.</p>
+          <p><b>LANES</b> On the ground, tap ▲ or ▼ to move one lane. Keys: Up/W, Down/X.</p>
+          <p><b>LEAN</b> In the air, those same arrows lean the bike. ▼ drops the nose. ▲ lifts it. A new press, after takeoff, starts a lean. A press you were already holding does not.</p>
+          <p><b>BOOST</b> Hold GAS, then slide your thumb up the pedal. GAS stays down. Slide back down to cancel the boost and keep the gas. Lift to let go of both. A full heat dial locks boost and the pedal reads LOCK. The Garage can switch this to a double-tap, a BOOST button, or off.</p>
           <p><b>TRICKS</b> A clean flip takes 0.5s off the clock per rotation, plus 0.5s for a multi-flip and 0.5s more for big air, and you get a short speed boost. A crash pays nothing.</p>
           <p><b>RIVALS</b> NYX, VEX, and ION ride the same line. The badge is your place. The bar shows the pack. The number on the right is meters to the next marker.</p>
           <p><b>COINS</b> Grab the glowing chips on the line. The count stays on this phone.</p>
           <p><b>DRAG FIELD</b> Magnetized neon strips slow a grounded bike. They are not mud. Air ignores them. Rivals ignore them.</p>
           <p><b>BOOST PAD</b> A pale pad pushes you toward boost speed for a short beat after you leave it, even with GAS released.</p>
-          <p><b>LEAN ▸</b> A posted ramp needs one forward lean tap in the air. Hold the lean and the nose overshoots.</p>
+          <p><b>LEAN ▸</b> A posted ramp needs one downward lean tap (▼) in the air. Hold the lean and the nose overshoots.</p>
           <p><b>REAR WHEEL</b> Closing on a rival's rear wheel in your lane is a fault. A red tail light and an outlined ! show before contact. You respawn in place. A rival running into you does not fault you.</p>
-          <p class="keys">Keys: D, Right, or Space gas. Up/W and Down/X lanes. A or Left lean back. Q or Z lean forward. Shift boost. P pause.</p>
+          <p class="keys">Keys: D, Right, or Space gas. Up/W and Down/X lanes on the ground. In the air, Up leans back and Down leans forward. P pause. With the BOOST button option on, Shift boosts.</p>
         </div>
       </div>
     </section>
@@ -142,7 +140,7 @@
           <div><dt>COINS</dt><dd id="result-coins">0</dd></div>
           <div><dt>FAULTS</dt><dd id="result-faults">0</dd></div>
           <div><dt>CLEAN</dt><dd id="result-cleans">0</dd></div>
-          <div><dt>TOP</dt><dd><span id="result-top">0</span> KM/H</dd></div>
+          <div><dt>TOP</dt><dd><span id="result-top">0</span> MPH</dd></div>
         </dl>
         <p id="result-stars" class="tag"></p>
         <p id="result-run" class="tag"></p>
@@ -185,6 +183,7 @@
         <div class="row">
           <button id="btn-stock" class="primary" type="button">STOCK ON</button>
           <button id="btn-haptics" class="ghost" type="button">HAPTICS ON</button>
+          <button id="btn-boost-mode" class="ghost" type="button">BOOST: SLIDE UP</button>
           <button id="btn-garage-back" class="ghost" type="button">BACK</button>
         </div>
         <p id="stock-note" class="tag">Tuned runs don't save times, stars, ghosts, or unlocks.</p>

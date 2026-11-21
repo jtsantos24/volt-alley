@@ -13,18 +13,19 @@
   const STEP = 1 / 120;
   const SIGNS = ['NOODLE', 'WETWARE', '24H', 'KILO', 'STATIC', 'ASH CO', 'BYTE', 'VOLT', 'LOW', 'GRID', 'NITE', 'AMP', 'RADIO', 'SODA'];
 
+  const PHYS = window.VoltMaps.PHYS;
   const TUNE = {
-    gravity: 760,
-    accel: 340,
-    turboAccel: 560,
-    coast: 150,
-    drag: 0.08,
-    maxSpeed: 720,
-    turboSpeed: 980,
+    gravity: PHYS.gravity,
+    accel: PHYS.accel,
+    turboAccel: PHYS.turboAccel,
+    coast: PHYS.coast,
+    drag: PHYS.drag,
+    maxSpeed: PHYS.maxSpeed,
+    turboSpeed: PHYS.turboSpeed,
     heatSpeed: 400,
-    pop: 3.3,
-    vyMax: 410,
-    vyMin: 170,
+    pop: PHYS.pop,
+    vyMax: PHYS.vyMax,
+    vyMin: PHYS.vyMin,
     crashAngle: 0.82,
     hardAngle: 0.48,
     cleanAngle: 0.22,
@@ -36,7 +37,7 @@
     heatLock: 0.11,
     heatClear: 0.28,
     launchMin: 200,
-    padTime: 0.9,
+    padTime: PHYS.padTime,
   };
   TUNE.rivalMax = 0.95 * TUNE.turboSpeed;
 
@@ -65,7 +66,7 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').match
     { id: 'spring', name: 'ARC SPRING', cost: 12, blurb: 'Hard landings lose less speed' },
     { id: 'coil', name: 'DRIVE COIL', cost: 16, blurb: 'Climbs sap less speed' },
   ];
-  let garage = { shell: 'stock', tunes: {}, stock: true, haptics: !reduceMotion };
+  let garage = { shell: 'stock', tunes: {}, stock: true, haptics: !reduceMotion, boostMode: 'slide' };
   const audio = window.VoltAudio;
 
   const $ = (id) => document.getElementById(id);
@@ -216,13 +217,15 @@ let raceTime = 0;
 
   const demo = { x: 900, y: 12, pitch: 0, lane: 0, laneF: 0, scale: 1 };
   const keys = new Set();
-  const touch = { throttle: false, turbo: false, up: false, down: false, upPress: 0, downPress: 0, leanBack: false, leanFwd: false };
+  const touch = { throttle: false, turbo: false, up: false, down: false, upPress: 0, downPress: 0, leanBack: false, leanFwd: false, leanFwdAt: 0, leanFwdSeen: false, leanFwdSteps: 0, leanBackAt: 0, leanBackSeen: false, leanBackSteps: 0 };
+  const BOOST_LABEL = { slide: 'BOOST: SLIDE UP', double: 'BOOST: DOUBLE-TAP', button: 'BOOST: BUTTON', off: 'BOOST: OFF' };
+  const gasG = { id: null, x: 0, y: 0, lastX: 0, lastY: 0, downAt: 0, upAt: 0, armed: false, postHold: false, thisPost: false, boost: false, heatCut: false };
   /* the alley stays dry; Static Cut uses short sparks, not falling streaks */
   const pool = [];
   let track = null;
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
-  function kmh(speed) { return Math.round(speed * 0.3); }
+  function mph(speed) { return Math.round(speed * (1 / 12) * 2.23694); }
   function ordinal(n) {
     return n + (n === 1 ? 'ST' : n === 2 ? 'ND' : n === 3 ? 'RD' : 'TH');
   }
@@ -274,6 +277,7 @@ let raceTime = 0;
         garage.tunes = raw.tunes || {};
         garage.stock = raw.stock !== false;
         garage.haptics = raw.haptics != null ? !!raw.haptics : !reduceMotion;
+        garage.boostMode = raw.boostMode === 'double' || raw.boostMode === 'button' || raw.boostMode === 'off' ? raw.boostMode : 'slide';
       }
     } catch (err) { /* ignore */ }
   }
@@ -406,9 +410,10 @@ function buildTrack(mapId) {
   const inputNow = { throttle: false, turbo: false, leanBack: false, leanFwd: false };
   function readInput() {
     inputNow.throttle = touch.throttle || keys.has('Space') || keys.has('KeyD') || keys.has('ArrowRight');
-    inputNow.turbo = touch.turbo || keys.has('ShiftLeft') || keys.has('ShiftRight');
-    inputNow.leanBack = touch.leanBack || keys.has('KeyA') || keys.has('ArrowLeft');
-    inputNow.leanFwd = touch.leanFwd || keys.has('KeyQ') || keys.has('KeyZ');
+    const shift = (garage.boostMode === 'button' || debugOn) && (keys.has('ShiftLeft') || keys.has('ShiftRight'));
+    inputNow.turbo = garage.boostMode === 'off' ? false : (touch.turbo || shift);
+    inputNow.leanBack = touch.leanBack;
+    inputNow.leanFwd = touch.leanFwd;
     return inputNow;
   }
 
@@ -435,6 +440,7 @@ function buildTrack(mapId) {
     bike.pitch = Math.atan(clamp(slope, 0, 1.2));
     bike.takeoffPitch = bike.pitch;
     bike.flips = 0;
+    bike.laneQueue = 0;
     audio.jump();
     rx('jump');
   }
@@ -568,6 +574,7 @@ function buildTrack(mapId) {
     bike.prevH = g.h;
     bike.prevSlope = g.slope;
     bike.airTime = 0;
+    bike.laneDead = 0;
     bike.invuln = 0.45;
     bike.guardLanding = true;
     bike.debrisHit = null;
@@ -781,6 +788,7 @@ function buildTrack(mapId) {
       r.signalDir = 0;
       r.stallT = 0;
       r.blockCd = 1 + i;
+      r.yieldCd = 0;
       r.pickT = 4 + i;
       r.warn = 0;
       r.hold = false;
@@ -811,6 +819,7 @@ function buildTrack(mapId) {
     bike.laneGrace = 0;
     bike.air = false;
     bike.airTime = 0;
+    bike.laneDead = 0;
     bike.vy = 0;
     bike.crashing = false;
     bike.crashT = 0;
@@ -841,6 +850,7 @@ function buildTrack(mapId) {
       r.warn = 0;
       r.hopT = 1;
       r.blockCd = 30;
+      r.yieldCd = 0;
       r.pickT = 30;
       if (i === idx) {
         r.x = x + gap;
@@ -909,6 +919,7 @@ function buildTrack(mapId) {
     const flips = bike.flips || 0;
     const airTime = bike.airTime;
     const back = (bike.pitch - (bike.takeoffPitch || 0)) > 0;
+    endLean();
     bike.air = false;
     bike.vy = 0;
     bike.y = g.h;
@@ -935,12 +946,14 @@ function buildTrack(mapId) {
       audio.land(true);
       burst(bike.x, g.h, '#ffb020', 8, 0.35);
       takeAirLane();
+      bike.laneDead = 0.1;
       return;
     }
     audio.land(false);
     burst(bike.x, g.h, '#5ef6ff', 8, 0.32);
     rx('land', { clean: true, airTime: airTime, flips: flips });
     takeAirLane();
+    bike.laneDead = 0.1;
     const save = trickSave(flips, airTime);
     if (save > 0) {
       runStats.saved += save;
@@ -1125,8 +1138,8 @@ function buildTrack(mapId) {
     if (jumpNear) {
       if (bike.air) {
         const nose = wrapAngle(bike.pitch);
-        if (nose > TUNE.hardAngle) text = bike.leanFlight ? 'LEAN FWD · TAP' : 'LEAN FWD';
-        else if (nose < -TUNE.hardAngle) text = 'LEAN BACK';
+        if (nose > TUNE.hardAngle) text = bike.leanFlight ? 'LEAN ▼ · TAP' : 'LEAN ▼';
+        else if (nose < -TUNE.hardAngle) text = 'LEAN ▲';
         else text = 'LEVEL';
         kind = text === 'LEVEL' ? 'good' : 'bad';
       } else {
@@ -1154,8 +1167,8 @@ function buildTrack(mapId) {
     }
     if (!text && bike.air && bike.airTime > 0.12) {
       const nose = wrapAngle(bike.pitch);
-      if (nose > TUNE.hardAngle) text = bike.leanFlight ? 'LEAN FWD · TAP' : 'LEAN FWD';
-      else if (nose < -TUNE.hardAngle) text = 'LEAN BACK';
+      if (nose > TUNE.hardAngle) text = bike.leanFlight ? 'LEAN ▼ · TAP' : 'LEAN ▼';
+      else if (nose < -TUNE.hardAngle) text = 'LEAN ▲';
       else text = 'LEVEL';
       kind = text === 'LEVEL' ? 'good' : 'bad';
     }
@@ -1212,6 +1225,7 @@ function buildTrack(mapId) {
       runStats.blocksSuffered += 1;
       globalBlockCd = 6;
       r.blockCd = 4;
+      r.yieldCd = 3;
     }
     r.hopFrom = r.lane;
     r.lane = target;
@@ -1256,7 +1270,8 @@ function buildTrack(mapId) {
       if (r.warn > 0) r.warn -= dt;
       if (r.stallT > 0) r.stallT -= dt;
       if (r.blockCd > 0) r.blockCd -= dt;
-      const wobble = 0.9 + 0.1 * Math.sin(time * 0.85 + r.phase);
+      if (r.yieldCd > 0) r.yieldCd -= dt;
+      const wobble = 0.9 + 0.1 * Math.sin(raceTime * 0.85 + r.phase);
       const paceMul = (currentMap && currentMap.pace) || 1;
       r.speed = r.pace * paceMul * wobble * (r.stallT > 0 ? 0.4 : 1);
       if (r.speed > TUNE.rivalMax) r.speed = TUNE.rivalMax;
@@ -1301,6 +1316,30 @@ function buildTrack(mapId) {
         } else if (r.signalT <= 0 && r.signalDir) {
           rivalHop(r, r.signalDir);
           r.signalDir = 0;
+        }
+      }
+      // v14.1: a rival ahead in the player's lane steps aside when the player closes on it from behind (ground only).
+      if (r.signalT <= 0 && r.hopT >= 1 && !(r.yieldCd > 0) && !r.funnel && !bike.crashing && (r.lane || 0) === (bike.lane || 0) && !bike.air) {
+        const yGap = r.x - bike.x;
+        const yClose = bike.speed - (r.speed || 0);
+        if (yClose > 60 && yGap > 0 && yGap < yClose + 160) {
+          let yDir = (r.lane || 0) === 0 ? 1 : ((r.lane || 0) === 2 ? -1 : 0);
+          if (!yDir) {
+            let near0 = 1e9;
+            let near2 = 1e9;
+            for (let k = 0; k < rivals.length; k++) {
+              const o = rivals[k];
+              if (o === r) continue;
+              const d = Math.abs(o.x - r.x);
+              if ((o.lane || 0) === 0 && d < near0) near0 = d;
+              if ((o.lane || 0) === 2 && d < near2) near2 = d;
+            }
+            yDir = near2 > near0 ? 1 : -1;
+            if (laneClosed(r.x + 80, (r.lane || 0) + yDir)) yDir = -yDir;
+          }
+          if (yGap < yClose * 0.5 + 120) rivalHop(r, yDir);
+          else signalRival(r, yDir);
+          if (r.signalDir === yDir && r.signalT > 0.2) r.signalT = 0.2;
         }
       }
       r.pickT = (r.pickT || 0) - dt;
@@ -1411,8 +1450,27 @@ function buildTrack(mapId) {
     return 9;
   }
 
+  function endLean() {
+    touch.leanFwd = false;
+    touch.leanBack = false;
+    touch.leanFwdSteps = 0;
+    touch.leanBackSteps = 0;
+    touch.leanFwdSeen = false;
+    touch.leanBackSeen = false;
+    touch.leanFwdFromAir = false;
+    touch.leanBackFromAir = false;
+  }
+
+  function plainLandingWindow() {
+    return bike.air && !bike.leanFlight && predictLand() <= 0.3;
+  }
+
   function requestLane(dir) {
     if (!dir || bike.crashing) return;
+    if (!bike.air && bike.laneDead > 0) {
+      buzz(4);
+      return;
+    }
     if (bike.looping || nearRing()) {
       buzz(4);
       return;
@@ -1656,6 +1714,7 @@ function buildTrack(mapId) {
   function physics(dt) {
     physT += dt;
     if (bike.rivalImmune > 0) bike.rivalImmune -= dt;
+    if (bike.laneDead > 0) bike.laneDead = Math.max(0, bike.laneDead - dt);
     tickBlocks();
     stepLanes(dt);
     if (bike.crashing) {
@@ -1677,6 +1736,10 @@ function buildTrack(mapId) {
     }
 
     const inp = readInput();
+    if (touch.leanFwd) touch.leanFwdSeen = true;
+    else if (touch.leanFwdSteps > 0) { inp.leanFwd = true; touch.leanFwdSteps -= 1; }
+    if (touch.leanBack) touch.leanBackSeen = true;
+    else if (touch.leanBackSteps > 0) { inp.leanBack = true; touch.leanBackSteps -= 1; }
     const boosting = inp.turbo && !bike.overheated;
     if (bike.boostArm > 0) bike.boostArm -= dt;
     if (boosting && !bike.wasBoost && bike.boostArm <= 0) {
@@ -1694,6 +1757,13 @@ function buildTrack(mapId) {
       if (bike.heat >= 1) {
         bike.heat = 1;
         bike.overheated = true;
+        if (garage.boostMode !== 'button') {
+          gasG.boost = false;
+          gasG.heatCut = true;
+          touch.turbo = false;
+          gasG.x = gasG.lastX;
+          gasG.y = gasG.lastY;
+        }
         runStats.overheats += 1;
         shake = Math.max(shake, 0.55);
         audio.overheat();
@@ -1712,7 +1782,7 @@ function buildTrack(mapId) {
     if (bike.speed > cap) {
       bike.speed += (cap - bike.speed) * Math.min(1, dt * 4.5);
     } else if (thrusting || padOn) {
-      const a = ((boosting || padOn) ? TUNE.turboAccel : TUNE.accel) * (bike.air ? 0.45 : 1);
+      const a = ((boosting || padOn) ? TUNE.turboAccel : TUNE.accel) * (bike.air ? PHYS.padPush : 1);
       bike.speed += a * dt;
       if (bike.speed > cap) bike.speed = cap;
     } else {
@@ -1721,8 +1791,8 @@ function buildTrack(mapId) {
     if (!bike.air) {
       const climb = queryGround(bike.x).slope;
       const climbCut = tuningOn('coil') ? 0.8 : 1;
-      bike.speed -= Math.max(0, climb) * 110 * climbCut * dt;
-      bike.speed += Math.max(0, -climb) * 46 * dt;
+      bike.speed -= Math.max(0, climb) * PHYS.climb * climbCut * dt;
+      bike.speed += Math.max(0, -climb) * PHYS.descent * dt;
     }
     bike.speed -= bike.speed * TUNE.drag * dt;
     bike.inDrag = 0;
@@ -1954,7 +2024,7 @@ function updateCountdown(dt) {
     stone0: '#100818', stone1: '#241444', stone2: '#32185a', stone3: '#4a2878', stone4: '#6a4098',
     cyan: '#5ef6ff', mag: '#ff4ad0', amber: '#ffb347', lamp: '#ffe08a', orange: '#ff8c42',
     drag: '#3ce6b0',
-    boost: '#fff1a8',
+    boost: '#d4ff1f',
   };
 
   let bg = null;
@@ -3543,7 +3613,7 @@ function updateCountdown(dt) {
     const lips = track && track.leanLips;
     if (lips) {
       ctx.fillStyle = PAL.lamp;
-      ctx.font = '800 11px Nunito, sans-serif';
+      ctx.font = '800 13px Nunito, sans-serif';
       for (let i = 0; i < lips.length; i++) {
         const sign = lips[i].signX;
         if (sign < cameraX - 20 || sign > cameraX + W + 20) continue;
@@ -3842,11 +3912,11 @@ function updateCountdown(dt) {
       setText($('map-name'), mapName);
     }
     const shown = phase === 'countdown' ? Math.round(rev * 420) : bike.speed;
-    const speedK = kmh(shown) | 0;
+    const speedK = mph(shown) | 0;
     if (speedK !== hudSpeed) {
       hudSpeed = speedK;
       setText($('speed-val'), String(speedK));
-      const speedNeedle = -120 + clamp(speedK / 300, 0, 1) * 240;
+      const speedNeedle = -120 + clamp(speedK / 200, 0, 1) * 240;
       $('speed-needle').style.transform = 'rotate(' + speedNeedle.toFixed(0) + 'deg)';
     }
     const heat = $('heat');
@@ -3901,9 +3971,32 @@ function updateCountdown(dt) {
     attitude.classList.toggle('bad', bad);
     attitude.classList.toggle('good', good);
     const air = phase === 'play' && bike.air && !bike.crashing;
-    $('btn-lean-back').classList.toggle('lit', air);
-    $('btn-lean-fwd').classList.toggle('lit', air);
-    $('btn-turbo').classList.toggle('locked', bike.overheated);
+    const lateLane = air && plainLandingWindow();
+    const laneUp = $('btn-lane-up');
+    const laneDown = $('btn-lane-down');
+    if (laneUp) {
+      laneUp.classList.toggle('lit', air && !lateLane);
+      laneUp.classList.toggle('lane-late', lateLane);
+      laneUp.setAttribute('aria-label', air && !lateLane ? 'Lean back' : 'Lane up');
+    }
+    if (laneDown) {
+      laneDown.classList.toggle('lit', air && !lateLane);
+      laneDown.classList.toggle('lane-late', lateLane);
+      laneDown.setAttribute('aria-label', air && !lateLane ? 'Lean forward' : 'Lane down');
+    }
+    const gas = $('btn-throttle');
+    const gasLocked = bike.overheated && (phase === 'play' || phase === 'countdown');
+    const gasBoost = !gasLocked && phase === 'play' && !!touch.turbo && garage.boostMode !== 'off';
+    if (gas) {
+      gas.classList.toggle('locked', gasLocked);
+      gas.classList.toggle('boosting', gasBoost);
+      gas.classList.toggle('armed', !gasLocked && !gasBoost && phase === 'play' && garage.boostMode === 'double' && gasG.armed);
+    }
+    const gasSub = $('gas-sub');
+    if (gasSub) setText(gasSub, gasLocked ? 'LOCK' : gasBoost ? 'BOOST' : '');
+    const turboBtn = $('btn-turbo');
+    if (turboBtn) turboBtn.classList.toggle('locked', bike.overheated);
+    document.body.classList.toggle('boost-button', garage.boostMode === 'button');
     $('app').classList.toggle('overheat', bike.overheated && phase === 'play');
   }
 
@@ -3951,6 +4044,7 @@ function updateCountdown(dt) {
     bike.debugLock = false;
     bike.air = false;
     bike.airTime = 0;
+    bike.laneDead = 0;
     bike.prevH = g.h;
     bike.prevSlope = g.slope;
     bike.heat = 0;
@@ -4076,7 +4170,7 @@ function updateCountdown(dt) {
     setText($('result-run'), 'SAVED ' + runStats.saved.toFixed(1) + 's · HOPS ' + runStats.hops + ' · BLOCKS ' + runStats.blocksSuffered + ' · REAR ' + runStats.faults.rear);
     setText($('result-faults'), String(crashes));
     setText($('result-cleans'), String(cleans));
-    setText($('result-top'), String(kmh(topSpeed)));
+    setText($('result-top'), String(mph(topSpeed)));
     const rows = standings();
     let place = 1;
     for (let i = 0; i < rows.length; i++) if (rows[i].id === 'you') place = i + 1;
@@ -4227,6 +4321,9 @@ function updateCountdown(dt) {
     setText($('btn-stock'), garage.stock ? 'STOCK ON' : 'STOCK OFF');
     paintTuned();
     setText($('btn-haptics'), garage.haptics ? 'HAPTICS ON' : 'HAPTICS OFF');
+    const boostBtn = $('btn-boost-mode');
+    if (boostBtn) setText(boostBtn, BOOST_LABEL[garage.boostMode] || BOOST_LABEL.slide);
+    document.body.classList.toggle('boost-button', garage.boostMode === 'button');
   }
 
   function openGarage() {
@@ -4264,6 +4361,18 @@ function updateCountdown(dt) {
     touch.downPress = 0;
     touch.leanBack = false;
     touch.leanFwd = false;
+    touch.leanFwdSteps = 0;
+    touch.leanBackSteps = 0;
+    touch.leanFwdSeen = false;
+    touch.leanBackSeen = false;
+    touch.leanFwdFromAir = false;
+    touch.leanBackFromAir = false;
+    gasG.boost = false;
+    gasG.heatCut = false;
+    gasG.armed = false;
+    gasG.postHold = false;
+    gasG.thisPost = false;
+    gasG.id = null;
   }
   function flushCoins() {
     if (debugOn) { coinsDirty = false; return; }
@@ -4380,12 +4489,168 @@ function updateCountdown(dt) {
     } catch (e) { /* ignore */ }
   }
 
+  function arrowFlag(dir) { return dir > 0 ? 'leanBack' : 'leanFwd'; }
+
+  function beginArrow(dir, stamp) {
+    if (phase !== 'play' || bike.crashing) return;
+    if (bike.air && !plainLandingWindow()) {
+      const flag = arrowFlag(dir);
+      touch[flag] = true;
+      touch[flag + 'At'] = stamp;
+      touch[flag + 'Seen'] = false;
+      touch[flag + 'FromAir'] = true;
+      return;
+    }
+    requestLane(dir);
+  }
+
+  function finishArrow(dir, stamp) {
+    const flag = arrowFlag(dir);
+    if (touch[flag + 'FromAir'] && bike.air && !touch[flag + 'Seen']) {
+      let steps = Math.round((stamp - (touch[flag + 'At'] || 0)) / 1000 / STEP);
+      if (steps < 1) steps = 1;
+      if (steps > 18) steps = 18;
+      touch[flag + 'Steps'] = steps;
+    }
+    touch[flag] = false;
+    touch[flag + 'FromAir'] = false;
+  }
+
+  function bindArrow(el, dir) {
+    const down = (e) => {
+      if (e.button != null && e.button !== 0) return;
+      e.preventDefault();
+      el.classList.add('held');
+      beginArrow(dir, e.timeStamp);
+      if (e.pointerId != null) {
+        try { el.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      }
+      unlockAudio();
+    };
+    const up = (e) => {
+      finishArrow(dir, (e && e.timeStamp) || 0);
+      el.classList.remove('held');
+    };
+    el.addEventListener('pointerdown', down);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    el.addEventListener('lostpointercapture', up);
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  function gasSlideNeed(el) {
+    const h = el.getBoundingClientRect().height;
+    return Math.floor(Math.max(22, 0.205 * h));
+  }
+
+  function doubleDown(stamp) {
+    if (phase !== 'play' || garage.boostMode !== 'double' || bike.overheated) {
+      gasG.thisPost = false;
+      return;
+    }
+    gasG.thisPost = gasG.postHold;
+    if (gasG.armed && !gasG.postHold && (stamp - gasG.upAt) <= 220) {
+      gasG.armed = false;
+      gasG.boost = true;
+      touch.turbo = true;
+    } else {
+      gasG.armed = false;
+    }
+    gasG.downAt = stamp;
+  }
+
+  function doubleUp(stamp) {
+    if (garage.boostMode !== 'double') return;
+    const dur = stamp - gasG.downAt;
+    if (gasG.boost) {
+      gasG.boost = false;
+      touch.turbo = false;
+    } else if (phase === 'play' && !bike.overheated) {
+      if (gasG.thisPost) {
+        gasG.postHold = false;
+        gasG.armed = false;
+      } else if (dur < 180) {
+        gasG.armed = true;
+        gasG.upAt = stamp;
+      } else {
+        gasG.armed = false;
+        gasG.postHold = true;
+      }
+    } else {
+      gasG.armed = false;
+      gasG.postHold = false;
+    }
+    gasG.thisPost = false;
+  }
+
+  function bindGas(el) {
+    const down = (e) => {
+      if (e.button != null && e.button !== 0) return;
+      gasG.id = e.pointerId;
+      gasG.x = e.clientX;
+      gasG.y = e.clientY;
+      gasG.lastX = e.clientX;
+      gasG.lastY = e.clientY;
+      gasG.boost = false;
+      gasG.heatCut = false;
+      if (garage.boostMode !== 'button') touch.turbo = false;
+      gasG.downAt = e.timeStamp;
+      if (e.pointerId != null) {
+        try { el.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      }
+      if (phase === 'play' && garage.boostMode === 'double') doubleDown(e.timeStamp);
+    };
+    const move = (e) => {
+      if (gasG.id == null || e.pointerId !== gasG.id) return;
+      gasG.lastX = e.clientX;
+      gasG.lastY = e.clientY;
+      if (phase !== 'play' || garage.boostMode !== 'slide') return;
+      if (bike.overheated) {
+        gasG.boost = false;
+        gasG.heatCut = true;
+        touch.turbo = false;
+        gasG.x = e.clientX;
+        gasG.y = e.clientY;
+        return;
+      }
+      if (gasG.heatCut && !gasG.boost && e.clientY > gasG.y) {
+        gasG.x = e.clientX;
+        gasG.y = e.clientY;
+      }
+      const dy = gasG.y - e.clientY;
+      const dx = e.clientX - gasG.x;
+      const need = gasSlideNeed(el);
+      if (!gasG.boost && dy >= need && dy >= 1.5 * Math.abs(dx)) {
+        gasG.boost = true;
+        touch.turbo = true;
+      }
+      if (gasG.boost && e.clientY > gasG.y - 8) {
+        gasG.boost = false;
+        touch.turbo = false;
+      }
+    };
+    const up = (e) => {
+      if (gasG.id == null || !e || e.pointerId !== gasG.id) return;
+      if (garage.boostMode === 'slide') {
+        gasG.boost = false;
+        touch.turbo = false;
+      } else if (garage.boostMode === 'double') {
+        doubleUp((e && e.timeStamp) || 0);
+      }
+      gasG.heatCut = false;
+      gasG.id = null;
+    };
+    el.addEventListener('pointerdown', down);
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    el.addEventListener('lostpointercapture', up);
+  }
+
   function bindHold(el, flag) {
     const down = (e) => {
       e.preventDefault();
       touch[flag] = true;
-      if (flag === 'up') touch.upPress = Math.min(2, touch.upPress + 1);
-      if (flag === 'down') touch.downPress = Math.min(2, touch.downPress + 1);
       el.classList.add('held');
       if (e.pointerId != null) {
         try { el.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
@@ -4418,11 +4683,10 @@ function updateCountdown(dt) {
 
   function bindUi() {
     bindHold($('btn-throttle'), 'throttle');
+    bindGas($('btn-throttle'));
     bindHold($('btn-turbo'), 'turbo');
-    bindHold($('btn-lane-up'), 'up');
-    bindHold($('btn-lane-down'), 'down');
-    bindHold($('btn-lean-back'), 'leanBack');
-    bindHold($('btn-lean-fwd'), 'leanFwd');
+    bindArrow($('btn-lane-up'), 1);
+    bindArrow($('btn-lane-down'), -1);
 
     bindPress($('btn-ride'), onRide);
     bindPress($('btn-maps-back'), () => { uiBlip(); toTitle(); });
@@ -4431,6 +4695,18 @@ function updateCountdown(dt) {
     bindPress($('btn-garage-back'), () => { uiBlip(); openMaps(); });
     bindPress($('btn-stock'), () => { garage.stock = !garage.stock; saveGarage(); uiBlip(); renderGarage(); });
     bindPress($('btn-haptics'), () => { garage.haptics = !garage.haptics; saveGarage(); uiBlip(); renderGarage(); });
+    bindPress($('btn-boost-mode'), () => {
+      const order = ['slide', 'double', 'button', 'off'];
+      const i = order.indexOf(garage.boostMode);
+      garage.boostMode = order[(i + 1) % order.length];
+      gasG.armed = false;
+      gasG.postHold = false;
+      gasG.boost = false;
+      touch.turbo = false;
+      saveGarage();
+      uiBlip();
+      renderGarage();
+    });
     const shellRow = $('shell-row');
     if (shellRow) {
       shellRow.addEventListener('click', (e) => {
@@ -4537,10 +4813,14 @@ function updateCountdown(dt) {
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
         e.preventDefault();
       }
-      if (e.repeat && (e.code === 'Enter' || e.code === 'KeyP' || e.code === 'Escape' || e.code === 'KeyW' || e.code === 'KeyX' || e.code === 'ArrowUp' || e.code === 'ArrowDown')) return;
+      const gasKey = e.code === 'Space' || e.code === 'KeyD' || e.code === 'ArrowRight';
+      const upKey = e.code === 'KeyW' || e.code === 'ArrowUp';
+      const downKey = e.code === 'KeyX' || e.code === 'ArrowDown';
+      if (e.repeat && (e.code === 'Enter' || e.code === 'KeyP' || e.code === 'Escape' || upKey || downKey || gasKey)) return;
       if (!e.repeat && phase === 'play') {
-        if (e.code === 'KeyW' || e.code === 'ArrowUp') requestLane(1);
-        else if (e.code === 'KeyX' || e.code === 'ArrowDown') requestLane(-1);
+        if (upKey) beginArrow(1, e.timeStamp);
+        else if (downKey) beginArrow(-1, e.timeStamp);
+        else if (gasKey && garage.boostMode === 'double') doubleDown(e.timeStamp);
       }
       keys.add(e.code);
       unlockAudio();
@@ -4554,7 +4834,13 @@ function updateCountdown(dt) {
         else if (phase === 'results') startCountdown();
       }
     });
-    document.addEventListener('keyup', (e) => keys.delete(e.code));
+    document.addEventListener('keyup', (e) => {
+      const gasKey = e.code === 'Space' || e.code === 'KeyD' || e.code === 'ArrowRight';
+      if (e.code === 'KeyW' || e.code === 'ArrowUp') finishArrow(1, e.timeStamp);
+      else if (e.code === 'KeyX' || e.code === 'ArrowDown') finishArrow(-1, e.timeStamp);
+      else if (gasKey && garage.boostMode === 'double') doubleUp(e.timeStamp);
+      keys.delete(e.code);
+    });
     window.addEventListener('blur', () => { keys.clear(); clearTouch(); });
     document.addEventListener('touchmove', (e) => {
       // Let the help/pause panels scroll on short screens; block page bounce everywhere else.
@@ -4588,13 +4874,7 @@ function updateCountdown(dt) {
   let sizedDpr = 0;
   let resizeTimer = 0;
   let safeAreaBottom = 0;
-  let btnFwdEl = null;
-  let btnBackEl = null;
   let btnBoostEl = null;
-  let fwdL = 0;
-  let fwdT = 0;
-  let fwdR = 0;
-  let fwdB = 0;
   let boostL = 0;
   let boostT = 0;
   let boostR = 0;
@@ -4603,32 +4883,10 @@ function updateCountdown(dt) {
   let muteT = 0;
   let muteR = 0;
   let muteB = 0;
-  let backL = 0;
-  let backT = 0;
-  let backR = 0;
-  let backB = 0;
-  let fwdDim = false;
-  let backDim = false;
   let boostDim = false;
   function cacheEdgeRects() {
-    if (!btnFwdEl) btnFwdEl = $('btn-lean-fwd');
-    if (!btnBackEl) btnBackEl = $('btn-lean-back');
     if (!btnBoostEl) btnBoostEl = $('btn-turbo');
     const mute = $('btn-mute');
-    if (btnFwdEl) {
-      const box = btnFwdEl.getBoundingClientRect();
-      fwdL = box.left;
-      fwdT = box.top;
-      fwdR = box.right;
-      fwdB = box.bottom;
-    }
-    if (btnBackEl) {
-      const box = btnBackEl.getBoundingClientRect();
-      backL = box.left;
-      backT = box.top;
-      backR = box.right;
-      backB = box.bottom;
-    }
     if (btnBoostEl) {
       const box = btnBoostEl.getBoundingClientRect();
       boostL = box.left;
@@ -4661,22 +4919,10 @@ function updateCountdown(dt) {
     return false;
   }
   function fadeEdgeButtons() {
-    if (!btnFwdEl || !btnBoostEl || !btnBackEl) return;
-    if (phase !== 'play') {
-      if (fwdDim) { fwdDim = false; btnFwdEl.style.opacity = ''; }
-      if (backDim) { backDim = false; btnBackEl.style.opacity = ''; }
+    if (!btnBoostEl) return;
+    if (phase !== 'play' || garage.boostMode !== 'button') {
       if (boostDim) { boostDim = false; btnBoostEl.style.opacity = ''; }
       return;
-    }
-    const coverFwd = riderCovers(fwdL, fwdT, fwdR, fwdB);
-    if (coverFwd !== fwdDim) {
-      fwdDim = coverFwd;
-      btnFwdEl.style.opacity = coverFwd ? '0.45' : '0.85';
-    }
-    const coverBack = riderCovers(backL, backT, backR, backB);
-    if (coverBack !== backDim) {
-      backDim = coverBack;
-      btnBackEl.style.opacity = coverBack ? '0.45' : '0.85';
     }
     const coverBoost = riderCovers(boostL, boostT, boostR, boostB);
     if (coverBoost !== boostDim) {
@@ -4778,6 +5024,8 @@ function updateCountdown(dt) {
     if (phase !== 'play') {
       touch.upPress = 0;
       touch.downPress = 0;
+      touch.leanFwdSteps = 0;
+      touch.leanBackSteps = 0;
     }
     stepRich(dt);
     noteHeap();
@@ -4919,7 +5167,7 @@ function updateCountdown(dt) {
     loop.last = performance.now();
     requestAnimationFrame(loop);
 
-    window.__VOLT = {
+    const api = {
       get phase() { return phase; },
       get x() { return bike.x; },
       get speed() { return bike.speed; },
@@ -4964,6 +5212,16 @@ function updateCountdown(dt) {
       get richToggles() { return richFlips; },
       get best() { return best; },
       get overheated() { return bike.overheated; },
+      get gas() { return !!touch.throttle; },
+      get turbo() { return !!touch.turbo; },
+      get pitch() { return bike.pitch || 0; },
+      get crashes() { return crashes; },
+      get leanFlight() { return !!bike.leanFlight; },
+      get airTime() { return bike.airTime || 0; },
+      get landIn() { return bike.air ? predictLand() : 9; },
+      get hopT() { return bike.hopT == null ? 1 : bike.hopT; },
+      get laneQueue() { return bike.laneQueue || 0; },
+      get boostMode() { return garage.boostMode; },
       get cleans() { return cleans; },
       get y() { return bike.y; },
       get rivals() { return rivals.map((r) => r.x); },
@@ -4997,7 +5255,6 @@ function updateCountdown(dt) {
       get crashX() { return bike.crashX || 0; },
       get immune() { return bike.rivalImmune || 0; },
       get invuln() { return bike.invuln || 0; },
-      debug(spec) { if (!debugOn) return null; return applyDebug(spec || {}); },
       get callout() {
         const el = $('callout');
         return el ? el.textContent : '';
@@ -5006,47 +5263,53 @@ function updateCountdown(dt) {
       get bgCool() { return bg && bg.rx ? bg.rx.cool : 0; },
       get bgBolt() { return bg && bg.bolt ? bg.bolt : 0; },
       get muted() { return bgMuted(); },
-      tryReact() {
-        if (!debugOn) return null;
-        if (!bg) return { flash: 0, cool: 0, bolt: 0 };
-        bg.rx.flash = 0;
-        bg.rx.cool = 0;
-        bg.bolt = 0;
-        bg.rx.flashCd = 0;
-        bg.rx.washCd = 0;
-        bg.rx.boltCd = 0;
-        const S = { bx: 120, by: 80, speed: bike.speed || 0, air: false, boost: true };
-        bgReact(bg, 'land', { clean: true, airTime: 1, flips: 1 }, S, W);
-        bgReact(bg, 'boostStart', {}, S, W);
-        bgReact(bg, 'pad', {}, S, W);
-        bgReact(bg, 'nearMiss', {}, S, W);
-        return { flash: bg.rx.flash || 0, cool: bg.rx.cool || 0, bolt: bg.bolt || 0 };
-      },
-      hold(gas, boost) {
-        if (!debugOn) return;
-        touch.throttle = !!gas;
-        touch.turbo = !!boost;
-      },
-      lean(fwd) {
-        if (!debugOn) return;
-        touch.leanFwd = !!fwd;
-        if (fwd) touch.leanBack = false;
-      },
-      tap(dir) {
-        if (!debugOn) return;
-        if (dir > 0) touch.upPress = Math.min(2, touch.upPress + 1);
-        else if (dir < 0) touch.downPress = Math.min(2, touch.downPress + 1);
-      },
-      step(n) {
-        if (!debugOn) return phase;
-        const count = n > 0 ? n : 1;
-        for (let i = 0; i < count; i++) {
-          if (phase !== 'play') break;
-          physics(STEP);
-        }
-        return phase;
-      },
     };
+    if (debugOn) {
+      Object.assign(api, {
+        debug: function (spec) { if (!debugOn) return null; return applyDebug(spec || {}); },
+        tryReact: function () {
+          if (!debugOn) return null;
+          if (!bg) return { flash: 0, cool: 0, bolt: 0 };
+          bg.rx.flash = 0;
+          bg.rx.cool = 0;
+          bg.bolt = 0;
+          bg.rx.flashCd = 0;
+          bg.rx.washCd = 0;
+          bg.rx.boltCd = 0;
+          const S = { bx: 120, by: 80, speed: bike.speed || 0, air: false, boost: true };
+          bgReact(bg, 'land', { clean: true, airTime: 1, flips: 1 }, S, W);
+          bgReact(bg, 'boostStart', {}, S, W);
+          bgReact(bg, 'pad', {}, S, W);
+          bgReact(bg, 'nearMiss', {}, S, W);
+          return { flash: bg.rx.flash || 0, cool: bg.rx.cool || 0, bolt: bg.bolt || 0 };
+        },
+        hold: function (gas, boost) {
+          if (!debugOn) return;
+          touch.throttle = !!gas;
+          touch.turbo = !!boost;
+        },
+        lean: function (fwd) {
+          if (!debugOn) return;
+          touch.leanFwd = !!fwd;
+          if (fwd) touch.leanBack = false;
+        },
+        tap: function (dir) {
+          if (!debugOn) return;
+          if (dir > 0) touch.upPress = Math.min(2, touch.upPress + 1);
+          else if (dir < 0) touch.downPress = Math.min(2, touch.downPress + 1);
+        },
+        step: function (n) {
+          if (!debugOn) return phase;
+          const count = n > 0 ? n : 1;
+          for (let i = 0; i < count; i++) {
+            if (phase !== 'play') break;
+            physics(STEP);
+          }
+          return phase;
+        },
+      });
+    }
+    window.__VOLT = api;
   }
 
   boot();

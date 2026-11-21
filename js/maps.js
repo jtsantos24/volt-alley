@@ -16,6 +16,12 @@
 
   const M = function (meters) { return meters * 12; };
 
+  const PHYS = Object.freeze({
+    gravity: 760, accel: 340, turboAccel: 560, coast: 150, drag: 0.08,
+    maxSpeed: 720, turboSpeed: 980, pop: 3.3, vyMax: 410, vyMin: 170,
+    padTime: 0.9, climb: 110, descent: 46, padPush: 0.45,
+  });
+
   const LIST = [
     { id: 'nite-pier', name: 'NITE PIER', tier: 'NOVICE', accent: '#5ef6ff', theme: 'pier', star2: 27, star3: 19, rivalT: [19.5, 22.5, 27], seed: 101, unlock: null, pace: 1, provisional: true },
     // Amp NYX 20.6 is the 20.58 s cap floor, rounded up to 0.1 s. The solved pace still finishes on 20.6.
@@ -672,7 +678,7 @@
       },
       'void-well': {
         cps: [0, 1920, 5088, 6512, 8840, 10088, 11192, 13304, 16448, 17552, 19664, 21512, 23144],
-        taps: [{ x: 4560, lane: 1, dir: 1 }, { x: 7980, lane: 2, dir: 1 }, { x: 13944, lane: 1, dir: -1 }, { x: 15720, lane: 0, dir: -1 }, { x: 19200, lane: 1, dir: 1 }, { x: 19440, lane: 2, dir: 1 }, { x: 21312, lane: 1, dir: -1 }, { x: 21432, lane: 0, dir: -1 }, { x: 22560, lane: 1, dir: 1 }],
+        taps: [{ x: 4560, lane: 1, dir: 1 }, { x: 7980, lane: 2, dir: 1 }, { x: 13944, lane: 1, dir: -1 }, { x: 15720, lane: 0, dir: -1 }, { x: 19200, lane: 1, dir: 1 }, { x: 19440, lane: 2, dir: 1 }, { x: 21408, lane: 1, dir: -1 }, { x: 21528, lane: 0, dir: -1 }, { x: 22560, lane: 1, dir: 1 }],
         place: function () {
         hazards.push({ kind: 'debris', x: 4260, w: 72, clear: 16, lane: 2 });
         hazards.push({ kind: 'debris', x: 12780, w: 72, clear: 16, lane: 0 });
@@ -967,6 +973,13 @@
       for (let c = 0; c < loops.length; c++) {
         if (d.x1 > loops[c].entry && d.x0 < loops[c].exit) errors.push('drag over ring');
       }
+      const zones = t.zones || [];
+      for (let z = 0; z < zones.length; z++) {
+        const zone = zones[z];
+        if (zone.kind !== 'tunnel' && zone.kind !== 'ring') continue;
+        if (d.lane === 'all' || d.lane == null) continue;
+        if (d.x1 > zone.x0 && d.x0 < zone.x1) errors.push('lane drag over ' + zone.kind);
+      }
     }
     const taps = (t.reach && t.reach.taps) || [];
     const rampLips = [];
@@ -977,7 +990,7 @@
         if (past > 0 && past < 780) errors.push('tap in air ' + taps[i].x);
       }
     }
-    function gasTouch(lip, speed0, boost, coast) {
+    function gasTouch(lip, speed0, boost, coast, climbCut) {
       const keys = t.keys;
       const dt = 1 / 120;
       let x = lip - 900;
@@ -999,23 +1012,23 @@
             if (x >= pads[p].x && x <= pads[p].x + pads[p].len) touching = true;
           }
         }
-        if (touching) padT = 0.9;
+        if (touching) padT = PHYS.padTime;
         const padOn = padT > 0;
         const thrusting = !coast || padOn;
-        const cap = (padOn || boost) ? 980 : 720;
-        if (!thrusting) speed -= 150 * dt;
+        const cap = (padOn || boost) ? PHYS.turboSpeed : PHYS.maxSpeed;
+        if (!thrusting) speed -= PHYS.coast * dt;
         else if (speed > cap) speed += (cap - speed) * Math.min(1, dt * 4.5);
         else {
-          const a = ((boost || padOn) ? 560 : 340) * (air ? 0.45 : 1);
+          const a = ((boost || padOn) ? PHYS.turboAccel : PHYS.accel) * (air ? PHYS.padPush : 1);
           speed += a * dt;
           if (speed > cap) speed = cap;
         }
         if (!air) {
           const climb = groundAt(keys, x).slope;
-          speed -= Math.max(0, climb) * 110 * dt;
-          speed += Math.max(0, -climb) * 46 * dt;
+          speed -= Math.max(0, climb) * PHYS.climb * (climbCut || 1) * dt;
+          speed += Math.max(0, -climb) * PHYS.descent * dt;
         }
-        speed -= speed * 0.08 * dt;
+        speed -= speed * PHYS.drag * dt;
         if (speed < 0) speed = 0;
         if (!air) {
           for (let di = 0; di < drags.length; di++) {
@@ -1029,7 +1042,7 @@
         const prevX = x;
         x += speed * dt;
         if (air) {
-          vy -= 760 * dt;
+          vy -= PHYS.gravity * dt;
           y += vy * dt;
           airTime += dt;
           g = groundAt(keys, x);
@@ -1043,7 +1056,7 @@
           const fell = gap > 26 && prevSlope > 0.2;
           if ((steep || fell) && speed > 200 && x > lip - 220) {
             const slope = Math.max(0.08, prevSlope);
-            vy = Math.min(410, Math.max(170, speed * Math.max(0.05, slope) * 3.3));
+            vy = Math.min(PHYS.vyMax, Math.max(PHYS.vyMin, speed * Math.max(0.05, slope) * PHYS.pop));
             air = true;
             airTime = 0;
             y = Math.max(g.h, glide);
@@ -1072,8 +1085,14 @@
       const topped = gasTouch(lip, 980, true, false);
       if (topped && (!lo || topped < lo)) lo = topped;
       if (topped > hi) hi = topped;
+      for (let sp = 250; sp <= 980; sp += 50) {
+        for (let b = 0; b < 2; b++) {
+          const landed = gasTouch(lip, sp === 950 ? 980 : sp, b === 1, false, 0.8);
+          if (landed > hi) hi = landed;
+        }
+      }
       if (!(lo > lip)) errors.push('gas touch ' + Math.round(lip));
-      landings.push({ lip: lip, x0: lo, x1: hi + 110, early: lo });
+      landings.push({ lip: lip, x0: lo - 20, x1: hi + 110, early: lo, hard0: lip + 100, hard1: hi + 110 });
     }
     function overlaps(x0, x1, band) {
       return x1 > band.x0 && x0 < band.x1;
@@ -1122,6 +1141,7 @@
           if (item.hard) errors.push(item.label + ' in landing ' + Math.round(band.lip));
           else warnings.push(item.label + ' in landing ' + Math.round(band.lip));
         }
+        if (item.hard && item.x1 > band.hard0 && item.x0 < band.hard1) errors.push(item.label + ' in hard band ' + Math.round(band.lip));
       }
     }
     errors.warnings = warnings;
@@ -1144,5 +1164,6 @@
     list: LIST,
     compile: compile,
     validate: validate,
+    PHYS: PHYS,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

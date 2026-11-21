@@ -393,6 +393,13 @@ button, input { font: inherit; color: inherit; }
 .lane-btn.held { background: linear-gradient(#7a4ad0, #2a1860); box-shadow: 0 6px 0 #120818, 0 0 14px rgba(94, 246, 255, 0.45); }
 #btn-throttle { right: calc(12px + var(--sar)); }
 #btn-throttle.held { box-shadow: 0 8px 0 #120818, 0 0 0 3px var(--cyan), 0 0 14px rgba(94, 246, 255, 0.55); }
+#btn-throttle.armed { box-shadow: 0 8px 0 #120818, 0 0 0 3px var(--cyan), 0 0 18px rgba(94, 246, 255, 0.85); }
+#btn-throttle.locked { color: var(--magenta); box-shadow: 0 8px 0 #120818, 0 0 0 3px var(--magenta); }
+#btn-throttle.locked .pedal-sub { color: var(--magenta); }
+#btn-throttle.boosting .pedal-sub { color: #d4ff1f; }
+.lane-btn.lit { box-shadow: 0 6px 0 #120818, 0 0 0 3px var(--magenta); }
+.lane-btn.lane-late { box-shadow: 0 6px 0 #120818, 0 0 0 3px var(--cyan); }
+body:not(.boost-button) #btn-turbo { display: none; }
 .round {
   width: 68px;
   height: 68px;
@@ -403,14 +410,9 @@ button, input { font: inherit; color: inherit; }
   font-size: 14px;
 }
 .round.held { background: linear-gradient(#ff8ad8, #c42888); }
-#btn-lean-back { left: calc(18px + var(--sal)); bottom: calc(150px + var(--sab)); opacity: 0.92; }
-#btn-lean-fwd { left: calc(82px + var(--sal)); bottom: calc(150px + var(--sab)); opacity: 0.92; }
-#btn-lean-back.lit, #btn-lean-fwd.lit { opacity: 1; box-shadow: 0 5px 0 #120818, 0 0 0 3px var(--magenta); }
 #btn-turbo { right: calc(18px + var(--sar)); bottom: calc(150px + var(--sab)); color: var(--amber); }
 #btn-turbo.held { background: linear-gradient(#ffe08a, #ff8c42); color: #120818; }
 #btn-turbo.locked { color: var(--magenta); box-shadow: 0 5px 0 #120818, 0 0 0 3px var(--magenta); }
-body.racing #btn-lean-back,
-body.racing #btn-lean-fwd,
 body.racing #btn-turbo {
   bottom: calc(170px + var(--sab));
   width: 52px;
@@ -865,9 +867,8 @@ button:focus-visible {
   #gap { top: calc(52px + var(--sat)); font-size: 22px; }
   .pedal { height: 110px; }
   #lane-pad { height: 110px; }
-  #btn-lean-fwd { left: calc(78px + var(--sal)); }
-  #btn-turbo, #btn-lean-back, #btn-lean-fwd { bottom: calc(126px + var(--sab)); width: 48px; height: 48px; }
-  body.racing #btn-turbo, body.racing #btn-lean-back, body.racing #btn-lean-fwd { bottom: calc(126px + var(--sab)); width: 48px; height: 48px; }
+  #btn-turbo { bottom: calc(126px + var(--sab)); width: 48px; height: 48px; }
+  body.racing #btn-turbo { bottom: calc(126px + var(--sab)); width: 48px; height: 48px; }
   #btn-pause { top: calc(96px + var(--sat)); }
   #hud:not(.hidden) ~ #btn-mute { top: calc(96px + var(--sat)); }
   #map-name { top: calc(66px + var(--sat)); }
